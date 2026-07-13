@@ -140,3 +140,74 @@ table.grid td {
   padding: 6px 8px;
   text-align: left;
 }
+
+.color-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  display: inline-block;
+}
+.field button {
+  margin-right: 6px;
+}
+.field input[type="range"] {
+  min-width: 180px;
+}
+.field input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.result-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.result-row > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.lyrics-preview,
+.paste-area {
+  width: 100%;
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  white-space: pre-wrap;
+  font-family: Consolas, monospace;
+}
+.paste-area {
+  resize: vertical;
+}
+
+.editor-table {
+  max-height: 340px;
+  overflow: auto;
+  margin: 8px 0;
+}
+.editor-table td:nth-child(2) {
+  font-family: Consolas, monospace;
+  white-space: nowrap;
+}
+.editor-table button {
+  padding: 2px 8px;
+}

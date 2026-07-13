@@ -8,6 +8,34 @@ use crate::lyrics::{LyricLine, LyricWord, LyricsDoc, ParseError, SourceId};
 /// Default duration (ms) for the final line when nothing follows it.
 const TRAILING_LINE_MS: u64 = 4000;
 
+/// Format ms as an LRC `[mm:ss.xx]` timestamp (centiseconds).
+fn fmt_ts(ms: u64, open: char, close: char) -> String {
+    let cs = (ms % 1000) / 10;
+    let s = (ms / 1000) % 60;
+    let m = ms / 60_000;
+    format!("{open}{m:02}:{s:02}.{cs:02}{close}")
+}
+
+/// Serialize a document back to LRC. Word timings, when present, are preserved
+/// as Enhanced-LRC inline `<mm:ss.xx>` tags.
+pub fn serialize_lrc(doc: &LyricsDoc) -> String {
+    let mut out = String::new();
+    for line in &doc.lines {
+        out.push_str(&fmt_ts(line.start, '[', ']'));
+        match &line.words {
+            Some(words) if !words.is_empty() => {
+                for w in words {
+                    out.push_str(&fmt_ts(w.start, '<', '>'));
+                    out.push_str(&w.text);
+                }
+            }
+            _ => out.push_str(&line.text),
+        }
+        out.push('\n');
+    }
+    out
+}
+
 struct RawLine {
     start: u64,
     text: String,

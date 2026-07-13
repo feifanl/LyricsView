@@ -1,12 +1,17 @@
 // Karaoke renderer: line stack (prev/current/next context) + progressive word
-// fill. Per-frame style writes are limited to the active word for smoothness.
-import type { AnimationStyle } from "../shared/settings";
+// fill, with optional romanization sub-lines and Japanese furigana. Per-frame
+// style writes are limited to the active word for smoothness.
+import type { AnimationStyle, RomanizationCfg } from "../shared/settings";
 import type { LyricsDoc, LyricLine, LyricWord } from "../shared/types";
 import { synthesizeWords } from "./interpolate";
+import { annotate, romanizationActive } from "./romanize";
 
 interface PreparedLine {
   line: LyricLine;
   words: LyricWord[];
+  romaji?: string;
+  furiganaHtml?: string;
+  translation?: string;
 }
 
 export interface RenderLayout {
@@ -15,6 +20,8 @@ export interface RenderLayout {
   animation: AnimationStyle;
 }
 
+const NO_ROMANIZATION: RomanizationCfg = { ja: false, jaFurigana: false, zh: false, ko: false, ru: false };
+
 export class Renderer {
   private prepared: PreparedLine[] = [];
   private plain: string | null = null;
@@ -22,6 +29,8 @@ export class Renderer {
   private wordSpans: HTMLElement[] = [];
   private prevActive = -1;
   private layout: RenderLayout = { before: 1, after: 1, animation: "fill" };
+  private romanization: RomanizationCfg = NO_ROMANIZATION;
+  private annVersion = 0;
 
   constructor(private readonly container: HTMLElement) {}
 
@@ -30,10 +39,16 @@ export class Renderer {
     this.currentIdx = -1; // force rebuild with new context counts
   }
 
+  setRomanization(cfg: RomanizationCfg): void {
+    this.romanization = cfg;
+    void this.annotateAll();
+  }
+
   setDoc(doc: LyricsDoc | null): void {
     this.currentIdx = -1;
     this.wordSpans = [];
     this.prevActive = -1;
+    this.annVersion += 1;
     this.container.innerHTML = "";
     if (!doc || doc.lines.length === 0) {
       this.prepared = [];
@@ -48,7 +63,33 @@ export class Renderer {
         line.words && line.words.length > 0
           ? line.words
           : synthesizeWords(line.text, line.start, line.end),
+      // Bundled translation (e.g. NetEase tlyric), if present.
+      translation: line.translation,
     }));
+    void this.annotateAll();
+  }
+
+  /** Attach per-line translations (from the batched translate command). */
+  setTranslations(translations: string[]): void {
+    for (let i = 0; i < this.prepared.length; i++) {
+      const t = translations[i];
+      if (t) this.prepared[i]!.translation = t;
+    }
+    this.currentIdx = -1; // rebuild to show translations
+  }
+
+  /** Lazily romanize every line, then force a rebuild so sub-lines appear. */
+  private async annotateAll(): Promise<void> {
+    if (!romanizationActive(this.romanization) || this.prepared.length === 0) return;
+    const version = ++this.annVersion;
+    const lines = this.prepared;
+    for (const p of lines) {
+      const ann = await annotate(p.line.text, this.romanization);
+      if (version !== this.annVersion) return; // superseded
+      p.romaji = ann.romaji;
+      p.furiganaHtml = ann.furiganaHtml;
+    }
+    this.currentIdx = -1; // rebuild to show romanization
   }
 
   /** Update the view for playback position `pos` (ms). */
@@ -94,16 +135,41 @@ export class Renderer {
     const start = Math.max(0, idx - this.layout.before);
     const end = Math.min(this.prepared.length - 1, idx + this.layout.after);
     for (let i = start; i <= end; i++) {
+      const p = this.prepared[i]!;
       const el = document.createElement("div");
       el.className = i === idx ? "lyric-line current" : "lyric-line context";
-      if (i === idx) {
-        this.buildWordSpans(el, this.prepared[i]!.words);
-      } else {
-        el.textContent = this.prepared[i]!.line.text;
-      }
+      this.buildLine(el, p, i === idx);
       this.container.appendChild(el);
-      // Fade-in on (re)mount.
       requestAnimationFrame(() => el.classList.add("mounted"));
+
+      if (p.romaji) {
+        this.appendSubLine(p.romaji, "romaji-line", i === idx);
+      }
+      if (p.translation) {
+        this.appendSubLine(p.translation, "trans-line", i === idx);
+      }
+    }
+  }
+
+  private appendSubLine(text: string, cls: string, isCurrent: boolean): void {
+    const el = document.createElement("div");
+    el.className = `${cls} ${isCurrent ? "current" : "context"}`;
+    el.textContent = text;
+    this.container.appendChild(el);
+    requestAnimationFrame(() => el.classList.add("mounted"));
+  }
+
+  private buildLine(el: HTMLElement, p: PreparedLine, isCurrent: boolean): void {
+    // Furigana (ruby) is rendered on the static text layer; word fill is
+    // disabled for that line (whole-line highlight instead) — combining ruby
+    // with progressive gradient fill is intentionally avoided.
+    if (p.furiganaHtml) {
+      el.innerHTML = p.furiganaHtml;
+      if (isCurrent) el.classList.add("no-fill");
+    } else if (isCurrent) {
+      this.buildWordSpans(el, p.words);
+    } else {
+      el.textContent = p.line.text;
     }
   }
 

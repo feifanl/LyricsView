@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "copy-dict": "node scripts/copy-kuromoji-dict.mjs",
+    "predev": "node scripts/copy-kuromoji-dict.mjs",
+    "prebuild": "node scripts/copy-kuromoji-dict.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",

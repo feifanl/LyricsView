@@ -1,0 +1,46 @@
+import { describe, expect, it } from "vitest";
+import type { RomanizationCfg } from "../shared/settings";
+import { annotate, detectScript } from "./romanize";
+
+const ALL: RomanizationCfg = { ja: true, jaFurigana: false, zh: true, ko: true, ru: true };
+
+describe("detectScript", () => {
+  it("detects Japanese by kana", () => {
+    expect(detectScript("これは日本語")).toBe("ja");
+  });
+  it("detects Chinese by ideographs (no kana)", () => {
+    expect(detectScript("我爱你")).toBe("zh");
+  });
+  it("detects Korean hangul", () => {
+    expect(detectScript("안녕하세요")).toBe("ko");
+  });
+  it("detects Russian cyrillic", () => {
+    expect(detectScript("Привет")).toBe("ru");
+  });
+  it("returns other for Latin", () => {
+    expect(detectScript("Never gonna give you up")).toBe("other");
+  });
+});
+
+describe("annotate", () => {
+  it("produces pinyin for Chinese", async () => {
+    const ann = await annotate("我爱你", ALL);
+    expect(ann.romaji).toBeTruthy();
+    expect(ann.romaji).toMatch(/wǒ|wo/i);
+  });
+
+  it("produces romaja for Korean", async () => {
+    const ann = await annotate("안녕", ALL);
+    expect(ann.romaji).toBeTruthy();
+  });
+
+  it("returns empty when the script is disabled", async () => {
+    const ann = await annotate("我爱你", { ...ALL, zh: false });
+    expect(ann.romaji).toBeUndefined();
+  });
+
+  it("returns empty for Latin text", async () => {
+    const ann = await annotate("hello", ALL);
+    expect(ann).toEqual({});
+  });
+});

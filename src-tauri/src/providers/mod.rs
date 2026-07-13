@@ -6,13 +6,16 @@
 // "prefer word-level" is on (default), a word-level result wins even over an
 // earlier line-level hit — we keep the first line-level doc as a base but keep
 // scanning for word timing, and return that if found.
+mod applemusic;
 mod lrclib;
+mod musixmatch;
+mod netease;
 
 use reqwest::Client;
 use tauri::{AppHandle, Runtime};
 
 use crate::config::{self, ProviderSettings};
-use crate::http::{client, APP_UA};
+use crate::http::{client, APP_UA, BROWSER_UA};
 use crate::lyrics::{LyricsDoc, SourceId};
 use crate::model::{SearchCandidate, TrackInfo};
 
@@ -34,7 +37,7 @@ pub async fn fetch_best<R: Runtime>(app: &AppHandle<R>, track: &TrackInfo) -> Op
         if !provider_active(&cfg, id) {
             continue;
         }
-        let Some(doc) = fetch_from(id, track).await else {
+        let Some(doc) = fetch_from(app, id, track).await else {
             continue;
         };
         if doc.has_word_timing {
@@ -60,8 +63,17 @@ pub async fn search<R: Runtime>(
     let cfg = config::load(app);
     match id {
         SourceId::Lrclib => lrclib::Lrclib.search(&client(APP_UA), query).await,
-        SourceId::Applemusic if !cfg.apple_music.is_configured() => Vec::new(),
-        // Other providers are wired in later milestones.
+        SourceId::Musixmatch => {
+            musixmatch::Musixmatch::new(app)
+                .search(&client(BROWSER_UA), query)
+                .await
+        }
+        SourceId::Netease => netease::Netease.search(&client(BROWSER_UA), query).await,
+        SourceId::Applemusic if cfg.apple_music.is_configured() => {
+            applemusic::AppleMusic::new(&cfg.apple_music)
+                .search(&client(BROWSER_UA), query)
+                .await
+        }
         _ => Vec::new(),
     }
 }
@@ -71,11 +83,37 @@ pub async fn fetch_candidate<R: Runtime>(
     app: &AppHandle<R>,
     cand: &SearchCandidate,
 ) -> Option<LyricsDoc> {
-    let _ = app;
     match cand.source {
         SourceId::Lrclib => lrclib::Lrclib.fetch_candidate(&client(APP_UA), cand).await,
-        _ => None,
+        SourceId::Musixmatch => {
+            musixmatch::Musixmatch::new(app)
+                .fetch_candidate(&client(BROWSER_UA), cand)
+                .await
+        }
+        SourceId::Netease => {
+            netease::Netease
+                .fetch_candidate(&client(BROWSER_UA), cand)
+                .await
+        }
+        SourceId::Applemusic => {
+            let cfg = config::load(app);
+            applemusic::AppleMusic::new(&cfg.apple_music)
+                .fetch_candidate(&client(BROWSER_UA), cand)
+                .await
+        }
+        SourceId::Manual => None,
     }
+}
+
+/// Cache key derived from a search candidate's own metadata.
+pub fn candidate_key(cand: &SearchCandidate) -> String {
+    crate::normalize::track_key(&TrackInfo {
+        title: cand.title.clone(),
+        artist: cand.artist.clone(),
+        album: cand.album.clone(),
+        duration_ms: cand.duration_ms.unwrap_or(0),
+        source_app_id: String::new(),
+    })
 }
 
 fn provider_active(cfg: &ProviderSettings, id: SourceId) -> bool {
@@ -89,9 +127,25 @@ fn provider_active(cfg: &ProviderSettings, id: SourceId) -> bool {
 }
 
 /// Dispatch a single-provider fetch. Match arms are filled in per milestone.
-async fn fetch_from(id: SourceId, track: &TrackInfo) -> Option<LyricsDoc> {
+async fn fetch_from<R: Runtime>(
+    app: &AppHandle<R>,
+    id: SourceId,
+    track: &TrackInfo,
+) -> Option<LyricsDoc> {
     match id {
         SourceId::Lrclib => lrclib::Lrclib.fetch(&client(APP_UA), track).await,
-        _ => None,
+        SourceId::Musixmatch => {
+            musixmatch::Musixmatch::new(app)
+                .fetch(&client(BROWSER_UA), track)
+                .await
+        }
+        SourceId::Netease => netease::Netease.fetch(&client(BROWSER_UA), track).await,
+        SourceId::Applemusic => {
+            let cfg = config::load(app);
+            applemusic::AppleMusic::new(&cfg.apple_music)
+                .fetch(&client(BROWSER_UA), track)
+                .await
+        }
+        SourceId::Manual => None,
     }
 }

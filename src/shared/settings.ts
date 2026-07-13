@@ -9,6 +9,14 @@ export type HotkeyAction =
   | "nextLine"
   | "reloadLyrics";
 
+export interface RomanizationCfg {
+  ja: boolean;
+  jaFurigana: boolean;
+  zh: boolean;
+  ko: boolean;
+  ru: boolean;
+}
+
 export type BackgroundStyle = "none" | "glass" | "solid";
 export type AnimationStyle = "fill" | "fade" | "none";
 export type ContextCount = 0 | 1 | 2;
@@ -47,13 +55,7 @@ export interface Settings {
     model?: string;
     targetLang: string;
   };
-  romanization: {
-    ja: boolean;
-    jaFurigana: boolean;
-    zh: boolean;
-    ko: boolean;
-    ru: boolean;
-  };
+  romanization: RomanizationCfg;
   hotkeys: Record<HotkeyAction, string>;
   autoHide: { enabled: boolean; delaySec: number };
   globalOffsetMs: number;

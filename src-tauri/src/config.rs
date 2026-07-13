@@ -70,6 +70,23 @@ pub struct ProviderSettings {
     pub apple_music: AppleMusicCfg,
     pub translation: TranslationCfg,
     pub global_offset_ms: i64,
+    /// action id -> accelerator string.
+    pub hotkeys: HashMap<String, String>,
+}
+
+fn default_hotkeys() -> HashMap<String, String> {
+    [
+        ("toggleOverlay", "Alt+Shift+L"),
+        ("toggleEditMode", "Alt+Shift+E"),
+        ("offsetMinus", "Alt+Shift+["),
+        ("offsetPlus", "Alt+Shift+]"),
+        ("prevLine", "Alt+Shift+Left"),
+        ("nextLine", "Alt+Shift+Right"),
+        ("reloadLyrics", "Alt+Shift+R"),
+    ]
+    .iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect()
 }
 
 impl Default for ProviderSettings {
@@ -86,7 +103,21 @@ impl Default for ProviderSettings {
             apple_music: AppleMusicCfg::default(),
             translation: TranslationCfg::default(),
             global_offset_ms: 0,
+            hotkeys: default_hotkeys(),
         }
+    }
+}
+
+impl ProviderSettings {
+    /// Hotkeys with defaults filled in for any missing action.
+    pub fn hotkeys_or_default(&self) -> HashMap<String, String> {
+        let mut map = default_hotkeys();
+        for (k, v) in &self.hotkeys {
+            if !v.trim().is_empty() {
+                map.insert(k.clone(), v.clone());
+            }
+        }
+        map
     }
 }
 

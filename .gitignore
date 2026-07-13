@@ -3,6 +3,9 @@ dist/
 .vite/
 *.local
 
+# Generated: kuromoji dict copied from node_modules at pre(dev|build)
+public/kuromoji-dict/
+
 # Rust / Tauri
 src-tauri/target/
 src-tauri/gen/schemas/

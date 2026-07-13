@@ -1,6 +1,6 @@
 // #[tauri::command] surface. Commands are added milestone by milestone; this
 // module currently exposes the window-interaction and SMTC subsets.
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::cache::Cache;
 use crate::lyrics::{LyricsDoc, SourceId};
@@ -10,6 +10,8 @@ use crate::parse::parse_lrc;
 use crate::providers;
 use crate::smtc::{self, SmtcState};
 use crate::window::set_edit_mode as apply_edit_mode;
+
+const EVT_RELOAD: &str = "overlay://reload-lyrics";
 
 #[tauri::command]
 pub fn set_click_through<R: Runtime>(app: AppHandle<R>, enabled: bool) {
@@ -39,6 +41,39 @@ pub fn current_track_key<R: Runtime>(app: AppHandle<R>) -> Option<String> {
     app.try_state::<SmtcState>()
         .and_then(|s| s.current_track.lock().unwrap().clone())
         .map(|t| crate::normalize::track_key(&t))
+}
+
+#[tauri::command]
+pub fn current_track<R: Runtime>(app: AppHandle<R>) -> Option<TrackInfo> {
+    app.try_state::<SmtcState>()
+        .and_then(|s| s.current_track.lock().unwrap().clone())
+}
+
+/// Export a cached track's lyrics as an `.lrc` file via a save dialog.
+#[tauri::command]
+pub fn export_lrc<R: Runtime>(app: AppHandle<R>, track_key: String) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let doc = Cache::new(&app)
+        .load(&track_key)
+        .and_then(|e| e.best_doc())
+        .ok_or_else(|| "no cached lyrics for this track".to_string())?;
+    let lrc = crate::parse::serialize_lrc(&doc);
+
+    let path = app
+        .dialog()
+        .file()
+        .add_filter("LRC lyrics", &["lrc"])
+        .set_file_name("lyrics.lrc")
+        .blocking_save_file();
+    let Some(path) = path else {
+        return Ok(false); // user cancelled
+    };
+    let path = path
+        .into_path()
+        .map_err(|e| e.to_string())?;
+    std::fs::write(path, lrc).map_err(|e| e.to_string())?;
+    Ok(true)
 }
 
 #[tauri::command]
@@ -77,12 +112,34 @@ pub fn save_manual_lyrics<R: Runtime>(
     let cache = Cache::new(&app);
     cache.store_doc(&track_key, &doc);
     cache.set_preferred(&track_key, SourceId::Manual);
+    let _ = app.emit(EVT_RELOAD, ());
     Ok(doc)
 }
 
 #[tauri::command]
 pub fn set_preferred_source<R: Runtime>(app: AppHandle<R>, track_key: String, source: SourceId) {
     Cache::new(&app).set_preferred(&track_key, source);
+    let _ = app.emit(EVT_RELOAD, ());
+}
+
+/// Fetch a chosen search candidate, re-key it to the given track and make it the
+/// preferred source for that track.
+#[tauri::command]
+pub async fn apply_candidate<R: Runtime>(
+    app: AppHandle<R>,
+    track_key: String,
+    candidate: SearchCandidate,
+) -> Option<LyricsDoc> {
+    let fetched = providers::fetch_candidate(&app, &candidate).await?;
+    let doc = LyricsDoc {
+        track_key: track_key.clone(),
+        ..fetched
+    };
+    let cache = Cache::new(&app);
+    cache.store_doc(&track_key, &doc);
+    cache.set_preferred(&track_key, doc.source);
+    let _ = app.emit(EVT_RELOAD, ());
+    Some(doc)
 }
 
 #[tauri::command]
@@ -108,6 +165,68 @@ pub fn get_cache_info<R: Runtime>(app: AppHandle<R>) -> CacheInfo {
 #[tauri::command]
 pub fn clear_cache<R: Runtime>(app: AppHandle<R>) {
     Cache::new(&app).clear();
+}
+
+#[tauri::command]
+pub fn apply_hotkeys<R: Runtime>(app: AppHandle<R>) {
+    crate::hotkeys::apply(&app);
+}
+
+/// Copy a rendered PNG lyric card to the clipboard and offer a save dialog.
+#[tauri::command]
+pub fn share_line_image<R: Runtime>(app: AppHandle<R>, png: Vec<u8>) -> Result<(), String> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    use tauri_plugin_dialog::DialogExt;
+
+    let image = tauri::image::Image::from_bytes(&png).map_err(|e| e.to_string())?;
+    app.clipboard()
+        .write_image(&image)
+        .map_err(|e| e.to_string())?;
+
+    if let Some(path) = app
+        .dialog()
+        .file()
+        .add_filter("PNG image", &["png"])
+        .set_file_name("lyric-card.png")
+        .blocking_save_file()
+    {
+        let path = path.into_path().map_err(|e| e.to_string())?;
+        std::fs::write(path, &png).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Translate the current track's lines in one batched request, cached per track.
+/// Returns the input unchanged if translation is disabled or fails.
+#[tauri::command]
+pub async fn translate_lines<R: Runtime>(app: AppHandle<R>, lines: Vec<String>) -> Vec<String> {
+    let cfg = crate::config::load(&app).translation;
+    if !cfg.enabled || cfg.api_key.trim().is_empty() || lines.is_empty() {
+        return lines;
+    }
+    let key = app
+        .try_state::<SmtcState>()
+        .and_then(|s| s.current_track.lock().unwrap().clone())
+        .map(|t| track_key(&t));
+    let cache = Cache::new(&app);
+
+    if let Some(key) = &key {
+        if let Some(cached) = cache.cached_translation(key, &cfg.target_lang) {
+            if cached.len() == lines.len() {
+                return cached;
+            }
+        }
+    }
+
+    match crate::translate::translate(&cfg, &lines).await {
+        Some(out) if out.len() == lines.len() => {
+            if let Some(key) = &key {
+                cache.set_translation(key, &cfg.target_lang, out.clone());
+            }
+            out
+        }
+        _ => lines,
+    }
 }
 
 #[tauri::command]

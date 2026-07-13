@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   CacheInfo,
   LyricsDoc,
@@ -12,7 +12,7 @@ import type {
   TrackInfo,
   TrackMeta,
 } from "./types";
-import type { Settings } from "./settings";
+import type { HotkeyAction, Settings } from "./settings";
 
 // ---- Commands (typed wrappers over Tauri invoke) ----
 
@@ -56,15 +56,24 @@ export const cmd = {
   clearCache(): Promise<void> {
     return invoke("clear_cache");
   },
-  exportLrc(trackKey: string): Promise<void> {
+  exportLrc(trackKey: string): Promise<boolean> {
     return invoke("export_lrc", { trackKey });
+  },
+  currentTrack(): Promise<TrackInfo | null> {
+    return invoke("current_track");
+  },
+  shareLineImage(png: number[]): Promise<void> {
+    return invoke("share_line_image", { png });
+  },
+  applyHotkeys(): Promise<void> {
+    return invoke("apply_hotkeys");
+  },
+  applyCandidate(trackKey: string, candidate: SearchCandidate): Promise<LyricsDoc | null> {
+    return invoke("apply_candidate", { trackKey, candidate });
   },
   // Window/overlay helpers implemented in Rust.
   setEditMode(enabled: boolean): Promise<void> {
     return invoke("set_edit_mode", { enabled });
-  },
-  savePresetGeometry(): Promise<void> {
-    return invoke("save_preset_geometry");
   },
   currentTrackKey(): Promise<string | null> {
     return invoke("current_track_key");
@@ -79,6 +88,8 @@ export const EVT = {
   timeline: "smtc://timeline",
   settingsChanged: "settings://changed",
   toast: "overlay://toast",
+  hotkey: "overlay://hotkey",
+  reloadLyrics: "overlay://reload-lyrics",
 } as const;
 
 export function onTrackChanged(cb: (t: TrackInfo) => void): Promise<UnlistenFn> {
@@ -97,4 +108,16 @@ export function onSettingsChanged(cb: (s: Settings) => void): Promise<UnlistenFn
 }
 export function onToast(cb: (t: ToastPayload) => void): Promise<UnlistenFn> {
   return listen<ToastPayload>(EVT.toast, (e) => cb(e.payload));
+}
+export function onHotkey(cb: (action: HotkeyAction) => void): Promise<UnlistenFn> {
+  return listen<{ action: HotkeyAction }>(EVT.hotkey, (e) => cb(e.payload.action));
+}
+
+export function onReloadLyrics(cb: () => void): Promise<UnlistenFn> {
+  return listen(EVT.reloadLyrics, () => cb());
+}
+
+/** Broadcast updated settings to all windows (settings window -> overlay). */
+export function emitSettingsChanged(settings: Settings): Promise<void> {
+  return emit(EVT.settingsChanged, settings);
 }

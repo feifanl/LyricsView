@@ -1,6 +1,6 @@
 // Cargo tests for the LRC / Enhanced-LRC parser against real-world fixtures.
 use lyricify_oss_lib::lyrics::{ParseError, SourceId};
-use lyricify_oss_lib::parse::parse_lrc;
+use lyricify_oss_lib::parse::{parse_lrc, serialize_lrc};
 
 const STANDARD: &str = include_str!("fixtures/standard.lrc");
 const ENHANCED: &str = include_str!("fixtures/enhanced.lrc");
@@ -63,6 +63,21 @@ fn duplicate_and_out_of_order_timestamps_are_sorted() {
     let doc = parse_lrc(src, SourceId::Lrclib, "k").unwrap();
     let starts: Vec<u64> = doc.lines.iter().map(|l| l.start).collect();
     assert_eq!(starts, vec![10_000, 10_000, 20_000, 30_000]);
+}
+
+#[test]
+fn serialize_roundtrips_word_timing() {
+    let doc = parse_lrc(ENHANCED, SourceId::Manual, "k").unwrap();
+    let lrc = serialize_lrc(&doc);
+    // Re-parse the serialized output; word timings survive as enhanced tags.
+    let again = parse_lrc(&lrc, SourceId::Manual, "k").unwrap();
+    assert!(again.has_word_timing);
+    assert_eq!(again.lines.len(), doc.lines.len());
+    assert_eq!(again.lines[0].text, doc.lines[0].text);
+    assert_eq!(
+        again.lines[0].words.as_ref().unwrap()[0].start,
+        doc.lines[0].words.as_ref().unwrap()[0].start
+    );
 }
 
 #[test]

@@ -122,6 +122,16 @@ impl<'a, R: Runtime> Cache<'a, R> {
         let _ = self.save(&entry);
     }
 
+    pub fn cached_translation(&self, key: &str, lang: &str) -> Option<Vec<String>> {
+        self.load(key)?.translations.get(lang).cloned()
+    }
+
+    pub fn set_translation(&self, key: &str, lang: &str, lines: Vec<String>) {
+        let mut entry = self.load_or_new(key);
+        entry.translations.insert(lang.to_string(), lines);
+        let _ = self.save(&entry);
+    }
+
     pub fn info(&self) -> (u64, u64) {
         let Some(dir) = self.dir() else {
             return (0, 0);
@@ -149,5 +159,49 @@ impl<'a, R: Runtime> Cache<'a, R> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lyrics::LyricLine;
+
+    fn doc(source: SourceId, word: bool) -> LyricsDoc {
+        LyricsDoc {
+            source,
+            track_key: "k".into(),
+            lines: vec![LyricLine::new(0, 1000, "hi".into())],
+            plain: None,
+            has_word_timing: word,
+        }
+    }
+
+    #[test]
+    fn entry_roundtrips_with_sourceid_map_keys() {
+        let mut entry = CacheEntry::new("k");
+        entry.docs.insert(SourceId::Lrclib, doc(SourceId::Lrclib, false));
+        entry.docs.insert(SourceId::Netease, doc(SourceId::Netease, true));
+        entry.preferred_source = Some(SourceId::Netease);
+        entry.offset_ms = -200;
+
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(json.contains("\"lrclib\""));
+        let back: CacheEntry = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.docs.len(), 2);
+        assert_eq!(back.preferred_source, Some(SourceId::Netease));
+        assert_eq!(back.offset_ms, -200);
+    }
+
+    #[test]
+    fn best_doc_prefers_word_level_then_preferred() {
+        let mut entry = CacheEntry::new("k");
+        entry.docs.insert(SourceId::Lrclib, doc(SourceId::Lrclib, false));
+        entry.docs.insert(SourceId::Musixmatch, doc(SourceId::Musixmatch, true));
+        // No preference: richest (word-level) wins.
+        assert_eq!(entry.best_doc().unwrap().source, SourceId::Musixmatch);
+        // Explicit preference wins even if line-level.
+        entry.preferred_source = Some(SourceId::Lrclib);
+        assert_eq!(entry.best_doc().unwrap().source, SourceId::Lrclib);
     }
 }

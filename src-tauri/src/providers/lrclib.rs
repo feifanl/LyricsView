@@ -12,6 +12,7 @@ use crate::parse::parse_lrc;
 
 use super::Provider;
 
+
 const BASE: &str = "https://lrclib.net/api";
 
 #[derive(Debug, Deserialize)]
@@ -123,7 +124,7 @@ impl Provider for Lrclib {
             return None;
         }
         let item = resp.json::<LrclibItem>().await.ok()?;
-        let key = candidate_key(cand);
+        let key = super::candidate_key(cand);
         item.into_doc(&key)
     }
 }
@@ -143,15 +144,4 @@ impl Lrclib {
             Err(_) => Vec::new(),
         }
     }
-}
-
-/// Cache key derived from a candidate's own metadata.
-pub fn candidate_key(cand: &SearchCandidate) -> String {
-    track_key(&TrackInfo {
-        title: cand.title.clone(),
-        artist: cand.artist.clone(),
-        album: cand.album.clone(),
-        duration_ms: cand.duration_ms.unwrap_or(0),
-        source_app_id: String::new(),
-    })
 }
