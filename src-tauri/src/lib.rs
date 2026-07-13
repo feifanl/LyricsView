@@ -2,10 +2,14 @@
 // #[tauri::command] surface. Providers and cache modules are added in later
 // milestones.
 mod commands;
+mod config;
+mod http;
 pub mod lyrics;
+mod matching;
 mod model;
 mod normalize;
 pub mod parse;
+mod providers;
 mod smtc;
 mod tray;
 mod window;
@@ -40,6 +44,9 @@ pub fn run() {
             commands::list_smtc_sessions,
             commands::set_pinned_session,
             commands::current_track_key,
+            commands::fetch_lyrics,
+            commands::search_provider,
+            commands::fetch_candidate,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lyricify-OSS");

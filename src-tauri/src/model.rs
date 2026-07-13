@@ -2,6 +2,8 @@
 // mirror the TypeScript contract in src/shared/types.ts (camelCase on the wire).
 use serde::{Deserialize, Serialize};
 
+use crate::lyrics::SourceId;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrackInfo {
@@ -17,6 +19,18 @@ pub struct TrackInfo {
 pub struct SessionInfo {
     pub app_id: String,
     pub is_current: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchCandidate {
+    pub source: SourceId,
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub duration_ms: Option<u64>,
+    pub has_word_timing: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]

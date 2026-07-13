@@ -1,0 +1,111 @@
+// Rust-side view of the persisted settings (single source of truth is the
+// tauri-plugin-store file written by the frontend). Only the fields the Rust
+// core needs are modelled; everything is `#[serde(default)]` so a missing or
+// partial file degrades to sensible defaults.
+use std::collections::HashMap;
+
+use serde::Deserialize;
+use tauri::{AppHandle, Runtime};
+use tauri_plugin_store::StoreExt;
+
+use crate::lyrics::SourceId;
+
+pub const STORE_FILE: &str = "settings.json";
+const STORE_KEY: &str = "settings";
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AppleMusicCfg {
+    pub media_user_token: String,
+    pub developer_token: String,
+    pub storefront: String,
+}
+
+impl Default for AppleMusicCfg {
+    fn default() -> Self {
+        Self {
+            media_user_token: String::new(),
+            developer_token: String::new(),
+            storefront: "us".into(),
+        }
+    }
+}
+
+impl AppleMusicCfg {
+    pub fn is_configured(&self) -> bool {
+        !self.media_user_token.trim().is_empty() && !self.developer_token.trim().is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TranslationCfg {
+    pub enabled: bool,
+    pub provider: String,
+    pub api_key: String,
+    pub base_url: String,
+    pub model: String,
+    pub target_lang: String,
+}
+
+impl Default for TranslationCfg {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: "deepl".into(),
+            api_key: String::new(),
+            base_url: String::new(),
+            model: String::new(),
+            target_lang: "en".into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ProviderSettings {
+    pub provider_order: Vec<SourceId>,
+    pub providers_enabled: HashMap<String, bool>,
+    pub prefer_word_level: bool,
+    pub apple_music: AppleMusicCfg,
+    pub translation: TranslationCfg,
+    pub global_offset_ms: i64,
+}
+
+impl Default for ProviderSettings {
+    fn default() -> Self {
+        Self {
+            provider_order: vec![
+                SourceId::Lrclib,
+                SourceId::Musixmatch,
+                SourceId::Netease,
+                SourceId::Applemusic,
+            ],
+            providers_enabled: HashMap::new(),
+            prefer_word_level: true,
+            apple_music: AppleMusicCfg::default(),
+            translation: TranslationCfg::default(),
+            global_offset_ms: 0,
+        }
+    }
+}
+
+impl ProviderSettings {
+    /// Whether a provider is enabled. Apple Music defaults off; others on.
+    pub fn is_enabled(&self, id: SourceId) -> bool {
+        let key = serde_json::to_value(id)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default();
+        let default = id != SourceId::Applemusic;
+        self.providers_enabled.get(&key).copied().unwrap_or(default)
+    }
+}
+
+pub fn load<R: Runtime>(app: &AppHandle<R>) -> ProviderSettings {
+    app.store(STORE_FILE)
+        .ok()
+        .and_then(|s| s.get(STORE_KEY))
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default()
+}
