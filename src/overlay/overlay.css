@@ -48,14 +48,33 @@ body {
   font-weight: var(--font-weight);
   line-height: 1.15;
   color: var(--base-color);
+  opacity: 0;
+  transform: translateY(6px);
   transition: opacity 250ms ease, transform 250ms ease;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
+.lyric-line.mounted {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .lyric-line.context {
-  opacity: 0.45;
   font-size: calc(var(--font-size) * 0.72);
+}
+.lyric-line.context.mounted {
+  opacity: 0.45;
+}
+
+.plain-block {
+  opacity: 1;
+  transform: none;
+  font-size: calc(var(--font-size) * 0.6);
+  max-height: 100%;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  text-align: center;
 }
 
 .lyric-word {

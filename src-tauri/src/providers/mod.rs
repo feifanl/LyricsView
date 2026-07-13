@@ -16,13 +16,10 @@ use crate::http::{client, APP_UA};
 use crate::lyrics::{LyricsDoc, SourceId};
 use crate::model::{SearchCandidate, TrackInfo};
 
-pub use lrclib::candidate_key;
-
 /// A lyrics source. Fetches are fail-soft: any error yields `None`/empty so the
 /// chain degrades to the next provider (critical for the unofficial ones).
 #[allow(async_fn_in_trait)] // internal trait, always awaited on the same thread
 pub trait Provider {
-    fn id(&self) -> SourceId;
     async fn fetch(&self, http: &Client, track: &TrackInfo) -> Option<LyricsDoc>;
     async fn search(&self, http: &Client, query: &str) -> Vec<SearchCandidate>;
     async fn fetch_candidate(&self, http: &Client, cand: &SearchCandidate) -> Option<LyricsDoc>;

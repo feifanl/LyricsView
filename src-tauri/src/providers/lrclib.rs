@@ -65,10 +65,6 @@ impl LrclibItem {
 pub struct Lrclib;
 
 impl Provider for Lrclib {
-    fn id(&self) -> SourceId {
-        SourceId::Lrclib
-    }
-
     async fn fetch(&self, http: &Client, track: &TrackInfo) -> Option<LyricsDoc> {
         let key = track_key(track);
 
