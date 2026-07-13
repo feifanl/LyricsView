@@ -14,6 +14,8 @@ const statusEl = document.getElementById("status-chip") as HTMLDivElement;
 const clock = new PlaybackClock();
 const renderer = new Renderer(lyricsEl);
 let hasDoc = false;
+let globalOffsetMs = 0;
+let trackKey: string | null = null;
 
 function applyLayout(settings: Settings): void {
   const p = activePreset(settings);
@@ -29,9 +31,21 @@ function frame(): void {
   requestAnimationFrame(frame);
 }
 
+async function applyTrackOffset(): Promise<void> {
+  try {
+    trackKey = await cmd.currentTrackKey();
+    const meta = trackKey ? await cmd.getTrackMeta(trackKey) : null;
+    clock.setUserOffset(globalOffsetMs + (meta?.offsetMs ?? 0));
+  } catch (e) {
+    console.error("[overlay] track meta failed", e);
+    clock.setUserOffset(globalOffsetMs);
+  }
+}
+
 async function loadLyrics(t: TrackInfo): Promise<void> {
   hasDoc = false;
   renderer.setDoc(null);
+  void applyTrackOffset();
   setStatus("searching lyrics…");
   try {
     const doc: LyricsDoc | null = await cmd.fetchLyrics(t, false);
@@ -59,7 +73,8 @@ function setStatus(text: string | null): void {
 
 async function boot(): Promise<void> {
   const settings = await loadSettings();
-  clock.setUserOffset(settings.globalOffsetMs);
+  globalOffsetMs = settings.globalOffsetMs;
+  clock.setUserOffset(globalOffsetMs);
   applyPresetVars(settings);
   applyLayout(settings);
 

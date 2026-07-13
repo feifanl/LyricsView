@@ -2,8 +2,11 @@
 // module currently exposes the window-interaction and SMTC subsets.
 use tauri::{AppHandle, Manager, Runtime};
 
+use crate::cache::Cache;
 use crate::lyrics::{LyricsDoc, SourceId};
-use crate::model::{SearchCandidate, SessionInfo, TrackInfo};
+use crate::model::{CacheInfo, SearchCandidate, SessionInfo, TrackInfo, TrackMeta};
+use crate::normalize::track_key;
+use crate::parse::parse_lrc;
 use crate::providers;
 use crate::smtc::{self, SmtcState};
 use crate::window::set_edit_mode as apply_edit_mode;
@@ -44,9 +47,67 @@ pub async fn fetch_lyrics<R: Runtime>(
     track: TrackInfo,
     force: bool,
 ) -> Option<LyricsDoc> {
-    // Caching (cache-first + `force` bypass) is layered on in milestone 7.
-    let _ = force;
-    providers::fetch_best(&app, &track).await
+    let key = track_key(&track);
+    let cache = Cache::new(&app);
+
+    // Cache-first unless the caller forces a refresh (reload hotkey).
+    if !force {
+        if let Some(doc) = cache.load(&key).and_then(|e| e.best_doc()) {
+            return Some(doc);
+        }
+    }
+
+    match providers::fetch_best(&app, &track).await {
+        Some(doc) => {
+            cache.store_doc(&key, &doc);
+            Some(doc)
+        }
+        // On a forced refresh with no network, fall back to whatever is cached.
+        None => cache.load(&key).and_then(|e| e.best_doc()),
+    }
+}
+
+#[tauri::command]
+pub fn save_manual_lyrics<R: Runtime>(
+    app: AppHandle<R>,
+    track_key: String,
+    lrc_text: String,
+) -> Result<LyricsDoc, String> {
+    let doc = parse_lrc(&lrc_text, SourceId::Manual, &track_key).map_err(|e| e.to_string())?;
+    let cache = Cache::new(&app);
+    cache.store_doc(&track_key, &doc);
+    cache.set_preferred(&track_key, SourceId::Manual);
+    Ok(doc)
+}
+
+#[tauri::command]
+pub fn set_preferred_source<R: Runtime>(app: AppHandle<R>, track_key: String, source: SourceId) {
+    Cache::new(&app).set_preferred(&track_key, source);
+}
+
+#[tauri::command]
+pub fn set_track_offset<R: Runtime>(app: AppHandle<R>, track_key: String, offset_ms: i64) {
+    Cache::new(&app).set_offset(&track_key, offset_ms);
+}
+
+#[tauri::command]
+pub fn get_track_meta<R: Runtime>(app: AppHandle<R>, track_key: String) -> TrackMeta {
+    let entry = Cache::new(&app).load(&track_key).unwrap_or_default();
+    TrackMeta {
+        preferred_source: entry.preferred_source,
+        offset_ms: entry.offset_ms,
+    }
+}
+
+#[tauri::command]
+pub fn get_cache_info<R: Runtime>(app: AppHandle<R>) -> CacheInfo {
+    let (entries, bytes) = Cache::new(&app).info();
+    CacheInfo { entries, bytes }
+}
+
+#[tauri::command]
+pub fn clear_cache<R: Runtime>(app: AppHandle<R>) {
+    Cache::new(&app).clear();
 }
 
 #[tauri::command]

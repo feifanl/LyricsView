@@ -1,6 +1,7 @@
 // Lyricify-OSS Rust core: window/tray setup, plugin registration and the
 // #[tauri::command] surface. Providers and cache modules are added in later
 // milestones.
+mod cache;
 mod commands;
 mod config;
 mod http;
@@ -47,6 +48,12 @@ pub fn run() {
             commands::fetch_lyrics,
             commands::search_provider,
             commands::fetch_candidate,
+            commands::save_manual_lyrics,
+            commands::set_preferred_source,
+            commands::set_track_offset,
+            commands::get_track_meta,
+            commands::get_cache_info,
+            commands::clear_cache,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lyricify-OSS");

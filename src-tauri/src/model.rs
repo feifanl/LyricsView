@@ -46,3 +46,18 @@ pub struct TimelinePayload {
 pub struct PlaybackStatePayload {
     pub playing: bool,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackMeta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preferred_source: Option<SourceId>,
+    pub offset_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheInfo {
+    pub entries: u64,
+    pub bytes: u64,
+}
