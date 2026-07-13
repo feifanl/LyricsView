@@ -1,0 +1,42 @@
+import { load, type Store } from "@tauri-apps/plugin-store";
+import { defaultSettings, type Settings } from "./settings";
+
+const STORE_FILE = "settings.json";
+const KEY = "settings";
+
+let storePromise: Promise<Store> | null = null;
+
+function getStore(): Promise<Store> {
+  if (!storePromise) storePromise = load(STORE_FILE, { autoSave: false, defaults: {} });
+  return storePromise;
+}
+
+/** Load persisted settings, merged over defaults so new fields are filled in. */
+export async function loadSettings(): Promise<Settings> {
+  const store = await getStore();
+  const raw = await store.get<Partial<Settings>>(KEY);
+  return mergeDefaults(raw);
+}
+
+export async function saveSettings(settings: Settings): Promise<void> {
+  const store = await getStore();
+  await store.set(KEY, settings);
+  await store.save();
+}
+
+function mergeDefaults(raw: Partial<Settings> | undefined): Settings {
+  const base = defaultSettings();
+  if (!raw) return base;
+  // Shallow merge with a couple of nested objects that must keep defaults.
+  return {
+    ...base,
+    ...raw,
+    presets: raw.presets ?? base.presets,
+    providersEnabled: { ...base.providersEnabled, ...raw.providersEnabled },
+    appleMusic: { ...base.appleMusic, ...raw.appleMusic },
+    translation: { ...base.translation, ...raw.translation },
+    romanization: { ...base.romanization, ...raw.romanization },
+    hotkeys: { ...base.hotkeys, ...raw.hotkeys },
+    autoHide: { ...base.autoHide, ...raw.autoHide },
+  };
+}

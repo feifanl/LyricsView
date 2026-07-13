@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lyricify-OSS Overlay</title>
+    <link rel="stylesheet" href="/src/overlay/overlay.css" />
+  </head>
+  <body>
+    <div id="overlay-root" class="overlay-root">
+      <div id="lyrics" class="lyrics"></div>
+      <div id="status-chip" class="status-chip" hidden></div>
+      <div id="toast" class="toast" hidden></div>
+      <div id="edit-chrome" class="edit-chrome" hidden>
+        <div class="edit-hint">Edit mode — drag to move · resize edges</div>
+        <button id="edit-done" class="edit-done" title="Done">✓</button>
+      </div>
+    </div>
+    <script type="module" src="/src/overlay/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.vite/
+*.local
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Icon build source (kept out; regenerate via `tauri icon`)
+src-tauri/icons/source.png
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
