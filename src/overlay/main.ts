@@ -20,7 +20,6 @@ import { Renderer } from "./renderer";
 import { shareCard } from "./share";
 
 const lyricsEl = document.getElementById("lyrics") as HTMLDivElement;
-const statusEl = document.getElementById("status-chip") as HTMLDivElement;
 const toastEl = document.getElementById("toast") as HTMLDivElement;
 
 const clock = new PlaybackClock();
@@ -120,13 +119,9 @@ function toast(text: string): void {
   toastTimer = window.setTimeout(() => (toastEl.hidden = true), 1400);
 }
 
-function setStatus(text: string | null): void {
-  if (text === null) {
-    statusEl.hidden = true;
-  } else {
-    statusEl.textContent = text;
-    statusEl.hidden = false;
-  }
+// Status (searching / no lyrics / waiting) renders inside the glass box.
+function setStatus(text: string): void {
+  renderer.setMessage(text);
 }
 
 async function loadTrackMeta(): Promise<void> {
@@ -144,16 +139,14 @@ async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
   currentTrack = t;
   hasDoc = false;
   currentDoc = null;
-  renderer.setDoc(null);
   await loadTrackMeta();
   setStatus(force ? "reloading…" : "searching lyrics…");
   try {
     const doc = await cmd.fetchLyrics(t, force);
     if (doc && (doc.lines.length > 0 || doc.plain)) {
       currentDoc = doc;
-      renderer.setDoc(doc);
+      renderer.setDoc(doc); // replaces the status message
       hasDoc = true;
-      setStatus(null);
       void maybeTranslate(doc);
     } else {
       setStatus("♪ no lyrics");

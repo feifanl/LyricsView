@@ -93,6 +93,14 @@ body.faded .overlay-root {
   color: var(--fill-color);
 }
 
+/* Status text (searching / no lyrics / waiting) shown inside the glass box. */
+.status-line {
+  font-size: calc(var(--font-size) * 0.7);
+  font-weight: 500;
+  color: var(--base-color);
+  opacity: 0.7;
+}
+
 .romaji-line {
   font-size: calc(var(--font-size) * 0.5);
   color: var(--base-color);
@@ -177,17 +185,6 @@ ruby rt {
     inset 0 -1px 0 rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(30px) saturate(1.8);
   -webkit-backdrop-filter: blur(30px) saturate(1.8);
-}
-
-.status-chip {
-  position: absolute;
-  bottom: 10px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  font-size: 13px;
-  font-family: var(--font-family);
 }
 
 .toast {

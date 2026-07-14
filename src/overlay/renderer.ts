@@ -71,6 +71,27 @@ export class Renderer {
     void this.annotateAll();
   }
 
+  /** Show a status message (searching / no lyrics / …) inside the glass box,
+   *  styled like a line so it aligns with the overlay chrome. */
+  setMessage(text: string | null): void {
+    this.currentIdx = -1;
+    this.prepared = [];
+    this.plain = null;
+    this.wordSpans = [];
+    this.currentWrapper = null;
+    this.annVersion += 1;
+    this.container.innerHTML = "";
+    if (text) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "stack mounted";
+      const line = document.createElement("div");
+      line.className = "lyric-line current status-line";
+      line.textContent = text;
+      wrapper.appendChild(line);
+      this.container.appendChild(wrapper);
+    }
+  }
+
   /** Attach per-line translations (from the batched translate command). */
   setTranslations(translations: string[]): void {
     for (let i = 0; i < this.prepared.length; i++) {
