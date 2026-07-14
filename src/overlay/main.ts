@@ -37,6 +37,7 @@ let currentSettings: Settings | null = null;
 let autoHideEnabled = true;
 let autoHideDelayMs = 5000;
 let hideTimer = 0;
+let lastTimelinePos = -1;
 
 function applyOffsets(): void {
   clock.setUserOffset(globalOffsetMs + trackOffsetMs);
@@ -241,12 +242,24 @@ async function boot(): Promise<void> {
     void shareCurrentLine();
   });
 
-  await onTrackChanged((t) => void loadLyrics(t, false));
+  await onTrackChanged((t) => {
+    setFaded(false); // a new track means we're active
+    void loadLyrics(t, false);
+  });
   await onPlaybackState((p) => {
     clock.setPlaying(p.playing, Date.now());
     onPlayingChanged(p.playing);
   });
-  await onTimeline((t) => clock.update(t, Date.now()));
+  await onTimeline((t) => {
+    clock.update(t, Date.now());
+    // Advancing timeline = active playback: keep the overlay visible even if
+    // the player's playback-state event is unreliable (browsers).
+    if (t.positionMs > lastTimelinePos && t.positionMs - lastTimelinePos < 5000) {
+      window.clearTimeout(hideTimer);
+      setFaded(false);
+    }
+    lastTimelinePos = t.positionMs;
+  });
   await onHotkey(handleHotkey);
   await onReloadLyrics(() => {
     if (currentTrack) void loadLyrics(currentTrack, false);

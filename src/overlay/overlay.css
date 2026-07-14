@@ -45,20 +45,27 @@ body.faded .overlay-root {
   align-items: center;
   justify-content: center;
   gap: calc((var(--line-spacing) - 1) * var(--font-size));
-  width: 100%;
+  max-width: 92%;
   text-align: center;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .lyric-line {
   font-size: var(--font-size);
   font-weight: var(--font-weight);
-  line-height: 1.15;
+  line-height: 1.25;
+  letter-spacing: 0.005em;
   color: var(--base-color);
   opacity: 0;
   transform: translateY(6px);
   transition: opacity 250ms ease, transform 250ms ease;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.lyric-line.current {
+  filter: drop-shadow(0 1px 10px rgba(0, 0, 0, 0.35));
 }
 
 .lyric-line.mounted {
@@ -135,7 +142,7 @@ ruby rt {
 }
 
 .text-shadow .lyric-line {
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85), 0 0 2px rgba(0, 0, 0, 0.9);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6), 0 0 1px rgba(0, 0, 0, 0.5);
 }
 
 .outline .lyric-word,
@@ -146,18 +153,24 @@ ruby rt {
 /* Background pill styles */
 .lyrics.bg-solid,
 .lyrics.bg-glass {
-  border-radius: 16px;
-  padding: 14px 22px;
+  border-radius: 22px;
+  padding: 20px 34px;
   width: auto;
-  max-width: 100%;
+  max-width: 92%;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.35);
 }
 .lyrics.bg-solid {
-  background: var(--bg-color, #000000aa);
+  background: var(--bg-color, #14141aE6);
 }
 .lyrics.bg-glass {
-  background: var(--bg-color, #101015aa);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-color, #101015cc) 85%, transparent),
+    color-mix(in srgb, var(--bg-color, #101015cc) 100%, transparent)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
 }
 
 .status-chip {

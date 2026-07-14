@@ -18,7 +18,6 @@ describe("PlaybackClock", () => {
   it("freezes while paused", () => {
     const c = new PlaybackClock();
     c.update({ positionMs: 5000, reportedAtMs: 0, rate: 1 }, 0);
-    // never marked playing -> frozen
     expect(c.estimate(3000)).toBeCloseTo(5000, 0);
   });
 
@@ -28,26 +27,40 @@ describe("PlaybackClock", () => {
     expect(c.estimate(1000)).toBeCloseTo(10_500, 0);
   });
 
+  it("keeps advancing when the player reports a STALE position (browser trap)", () => {
+    // Player reports the same position every second while audio really plays.
+    const c = playingClock(10_000, 1000);
+    for (let t = 2000; t <= 6000; t += 1000) {
+      c.update({ positionMs: 10_000, reportedAtMs: t, rate: 1 }, t);
+    }
+    // Despite stale reports, the estimate has advanced well past 10 s.
+    expect(c.estimate(6000)).toBeGreaterThan(13_000);
+  });
+
+  it("infers playback from advancing reports even if setPlaying was never called", () => {
+    const c = new PlaybackClock();
+    c.update({ positionMs: 0, reportedAtMs: 0, rate: 1 }, 0);
+    // Never called setPlaying(true), but positions advance ~1s apart.
+    c.update({ positionMs: 1000, reportedAtMs: 1000, rate: 1 }, 1000);
+    c.update({ positionMs: 2000, reportedAtMs: 2000, rate: 1 }, 2000);
+    expect(c.isPlaying()).toBe(true);
+    expect(c.estimate(3000)).toBeGreaterThan(2000); // advancing, not frozen
+  });
+
   it("snaps on a large discrepancy (seek)", () => {
     const c = playingClock(10_000, 1000);
-    // At t=2000 estimate ~11_000. A report of 40_000 is a seek -> snap.
     c.update({ positionMs: 40_000, reportedAtMs: 2000, rate: 1 }, 2000);
     expect(c.estimate(2000)).toBeCloseTo(40_000, -1);
   });
 
-  it("slews smoothly on a small discrepancy (no visible jump)", () => {
+  it("slews small drift without a big jump", () => {
     const c = playingClock(10_000, 1000);
-    // At t=2000 estimate ~11_000. Report 11_300 (300ms drift, < snap).
-    const before = c.estimate(2000);
+    const before = c.estimate(2000); // ~11_000
     c.update({ positionMs: 11_300, reportedAtMs: 2000, rate: 1 }, 2000);
     const justAfter = c.estimate(2000);
-    // No instantaneous jump: displayed value stays continuous.
-    expect(justAfter).toBeCloseTo(before, 0);
-    // The drift is below the snap threshold.
-    expect(Math.abs(11_300 - before)).toBeLessThan(SNAP_THRESHOLD_MS);
-    // After the correction decays, it converges to the reported truth.
-    const settled = c.estimate(2000 + 2000);
-    expect(settled).toBeCloseTo(11_300 + 2000, -1);
+    // The step is a fraction of the 300 ms drift — no visible jump.
+    expect(Math.abs(justAfter - before)).toBeLessThan(SNAP_THRESHOLD_MS);
+    expect(Math.abs(justAfter - before)).toBeLessThan(120);
   });
 
   it("does not jump when toggling pause/play", () => {
