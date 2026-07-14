@@ -37,6 +37,7 @@ let autoHideEnabled = true;
 let autoHideDelayMs = 5000;
 let hideTimer = 0;
 let lastTimelinePos = -1;
+let loadSeq = 0;
 
 function applyOffsets(): void {
   clock.setUserOffset(globalOffsetMs + trackOffsetMs);
@@ -136,13 +137,16 @@ async function loadTrackMeta(): Promise<void> {
 }
 
 async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
+  const seq = ++loadSeq; // guard against overlapping loads (wrong-song races)
   currentTrack = t;
   hasDoc = false;
   currentDoc = null;
   await loadTrackMeta();
+  if (seq !== loadSeq) return;
   setStatus(force ? "reloading…" : "searching lyrics…");
   try {
     const doc = await cmd.fetchLyrics(t, force);
+    if (seq !== loadSeq) return; // a newer track superseded this fetch
     if (doc && (doc.lines.length > 0 || doc.plain)) {
       currentDoc = doc;
       renderer.setDoc(doc); // replaces the status message
@@ -152,6 +156,7 @@ async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
       setStatus("♪ no lyrics");
     }
   } catch (e) {
+    if (seq !== loadSeq) return;
     console.error("[overlay] fetch_lyrics failed", e);
     setStatus("lyrics error");
   }
@@ -237,6 +242,8 @@ async function boot(): Promise<void> {
 
   await onTrackChanged((t) => {
     setFaded(false); // a new track means we're active
+    clock.reset(); // don't carry the previous song's position/anchor
+    lastTimelinePos = -1;
     void loadLyrics(t, false);
   });
   await onPlaybackState((p) => {

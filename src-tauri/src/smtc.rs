@@ -81,8 +81,10 @@ fn run<R: Runtime>(app: AppHandle<R>) -> windows::core::Result<()> {
 
     // 1 Hz timeline poll (fallback for players that don't fire timeline events)
     // plus a metadata/state re-check so pinned-session switches are picked up.
+    // Poll at 500 ms: several players (Spotify, browsers) don't fire timeline
+    // events on seek/track-change, so polling keeps position and metadata fresh.
     loop {
-        std::thread::sleep(std::time::Duration::from_millis(1000));
+        std::thread::sleep(std::time::Duration::from_millis(500));
         if let Ok(session) = effective_session(&manager, &app) {
             emit_timeline(&app, &session);
             emit_track(&app, &session);

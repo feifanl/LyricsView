@@ -61,6 +61,26 @@ describe("PlaybackClock", () => {
     expect(c.estimate(3000)).toBeCloseTo(12_300, 0);
   });
 
+  it("follows a backward seek (re-anchors on any position change)", () => {
+    const c = playingClock(60_000, 1000);
+    // User seeks back to 5 s; player reports the new position at t=2000.
+    c.update({ positionMs: 5000, reportedAtMs: 2000, rate: 1 }, 2000);
+    expect(c.estimate(2000)).toBeCloseTo(5000, -1);
+    expect(c.estimate(3000)).toBeCloseTo(6000, -1);
+  });
+
+  it("reset() clears prior state so a new song starts at zero", () => {
+    const c = playingClock(120_000, 1000);
+    expect(c.estimate(5000)).toBeGreaterThan(100_000);
+    c.reset();
+    expect(c.isPlaying()).toBe(false);
+    expect(c.estimate(9999)).toBe(0);
+    // First report of the new song anchors fresh.
+    c.setPlaying(true, 10_000);
+    c.update({ positionMs: 0, reportedAtMs: 10_000, rate: 1 }, 10_000);
+    expect(c.estimate(11_000)).toBeCloseTo(1000, 0);
+  });
+
   it("does not jump when toggling pause/play", () => {
     const c = playingClock(10_000, 1000);
     const at = 5000;

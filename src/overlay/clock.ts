@@ -71,6 +71,16 @@ export class PlaybackClock {
     this.reportAt = report.reportedAtMs;
   }
 
+  /** Clear all state (call on track change so a new song starts from zero and
+   *  never inherits the previous song's anchor/position). */
+  reset(): void {
+    this.initialized = false;
+    this.playing = false;
+    this.posAtReport = 0;
+    this.reportAt = 0;
+    this.lastReportPos = 0;
+  }
+
   /** Toggle play/pause without jumping: rebase onto the current estimate. */
   setPlaying(playing: boolean, now: number): void {
     if (playing === this.playing) return;
