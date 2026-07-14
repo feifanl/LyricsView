@@ -37,6 +37,8 @@ export interface Preset {
 }
 
 export interface Settings {
+  /** Bumped to migrate built-in presets/defaults on load. */
+  schemaVersion: number;
   activePreset: string;
   presets: Record<string, Preset>;
   providerOrder: SourceId[];
@@ -63,6 +65,8 @@ export interface Settings {
   uiTheme: "light" | "dark";
 }
 
+export const SCHEMA_VERSION = 2;
+
 export const DEFAULT_HOTKEYS: Record<HotkeyAction, string> = {
   toggleOverlay: "Alt+Shift+L",
   toggleEditMode: "Alt+Shift+E",
@@ -78,10 +82,10 @@ function gamingPreset(): Preset {
     name: "Gaming",
     monitor: null,
     position: null,
-    size: { w: 520, h: 90 },
-    font: { family: "Segoe UI", sizePx: 26, weight: 600 },
-    colors: { base: "#ffffffcc", fill: "#4fc3f7", textShadow: true, outline: false },
-    opacity: 0.55,
+    size: { w: 520, h: 84 },
+    font: { family: "Segoe UI", sizePx: 24, weight: 600 },
+    colors: { base: "#ffffffcc", fill: "#7dd3fc", textShadow: true, outline: false },
+    opacity: 0.6,
     background: "none",
     backgroundColor: "#000000aa",
     contextLines: { before: 0, after: 0 },
@@ -96,41 +100,43 @@ function karaokePreset(): Preset {
     monitor: null,
     position: null,
     size: { w: 900, h: 260 },
-    font: { family: "Segoe UI", sizePx: 44, weight: 700 },
-    colors: { base: "#ffffffdd", fill: "#ffd54f", textShadow: true, outline: true },
+    font: { family: "Segoe UI", sizePx: 40, weight: 700 },
+    colors: { base: "#ffffffdd", fill: "#ffd54f", textShadow: true, outline: false },
     opacity: 1,
     background: "glass",
-    backgroundColor: "#101015aa",
+    backgroundColor: "rgba(18,18,26,0.28)",
     contextLines: { before: 1, after: 1 },
     lineSpacing: 1.35,
     animation: "fill",
   };
 }
 
-function subtitlePreset(): Preset {
+// Liquid-glass single-line bar, docked at the top — the default look.
+function glassBarPreset(): Preset {
   return {
-    name: "Subtitle",
+    name: "Glass Bar",
     monitor: null,
     position: null,
-    size: { w: 760, h: 130 },
-    font: { family: "Segoe UI", sizePx: 32, weight: 600 },
-    colors: { base: "#ffffffee", fill: "#8bc34a", textShadow: true, outline: false },
-    opacity: 0.95,
-    background: "none",
-    backgroundColor: "#000000aa",
+    size: { w: 1120, h: 104 },
+    font: { family: "Segoe UI", sizePx: 27, weight: 600 },
+    colors: { base: "#ffffffe6", fill: "#8be9fd", textShadow: false, outline: false },
+    opacity: 1,
+    background: "glass",
+    backgroundColor: "rgba(18,18,26,0.28)",
     contextLines: { before: 0, after: 0 },
-    lineSpacing: 1.25,
+    lineSpacing: 1.15,
     animation: "fill",
   };
 }
 
 export function defaultSettings(): Settings {
   return {
-    activePreset: "Karaoke",
+    schemaVersion: SCHEMA_VERSION,
+    activePreset: "Glass Bar",
     presets: {
+      "Glass Bar": glassBarPreset(),
       Gaming: gamingPreset(),
       Karaoke: karaokePreset(),
-      Subtitle: subtitlePreset(),
     },
     providerOrder: ["lrclib", "musixmatch", "netease", "applemusic"],
     providersEnabled: {
@@ -159,5 +165,5 @@ export function defaultSettings(): Settings {
 }
 
 export function activePreset(s: Settings): Preset {
-  return s.presets[s.activePreset] ?? karaokePreset();
+  return s.presets[s.activePreset] ?? glassBarPreset();
 }

@@ -27,11 +27,15 @@ export async function saveSettings(settings: Settings): Promise<void> {
 function mergeDefaults(raw: Partial<Settings> | undefined): Settings {
   const base = defaultSettings();
   if (!raw) return base;
-  // Shallow merge with a couple of nested objects that must keep defaults.
+  // One-time migration: when the schema version changes, refresh the built-in
+  // presets and active preset (keeps functional config like keys/tokens).
+  const migrate = raw.schemaVersion !== base.schemaVersion;
   return {
     ...base,
     ...raw,
-    presets: raw.presets ?? base.presets,
+    schemaVersion: base.schemaVersion,
+    presets: migrate ? base.presets : (raw.presets ?? base.presets),
+    activePreset: migrate ? base.activePreset : (raw.activePreset ?? base.activePreset),
     providersEnabled: { ...base.providersEnabled, ...raw.providersEnabled },
     appleMusic: { ...base.appleMusic, ...raw.appleMusic },
     translation: { ...base.translation, ...raw.translation },

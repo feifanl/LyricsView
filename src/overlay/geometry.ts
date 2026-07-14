@@ -36,8 +36,9 @@ export async function restoreGeometry(preset: Preset): Promise<void> {
   const mon = await pickMonitor(preset.monitor);
   if (!mon) return;
 
+  // Default: docked near the top-center of the work area.
   const defX = Math.round((mon.size.width - w) / 2);
-  const defY = Math.round((mon.size.height - h) * 0.8);
+  const defY = Math.round(mon.size.height * 0.04);
   const relX = preset.position?.x ?? defX;
   const relY = preset.position?.y ?? defY;
 

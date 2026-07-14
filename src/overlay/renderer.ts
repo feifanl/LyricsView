@@ -31,6 +31,7 @@ export class Renderer {
   private layout: RenderLayout = { before: 1, after: 1, animation: "fill" };
   private romanization: RomanizationCfg = NO_ROMANIZATION;
   private annVersion = 0;
+  private currentWrapper: HTMLElement | null = null;
 
   constructor(private readonly container: HTMLElement) {}
 
@@ -50,6 +51,7 @@ export class Renderer {
     this.prevActive = -1;
     this.annVersion += 1;
     this.container.innerHTML = "";
+    this.currentWrapper = null;
     if (!doc || doc.lines.length === 0) {
       this.prepared = [];
       this.plain = doc?.plain ?? null;
@@ -128,9 +130,13 @@ export class Renderer {
   }
 
   private rebuildStack(idx: number): void {
-    this.container.innerHTML = "";
     this.wordSpans = [];
     this.prevActive = -1;
+
+    // Build the new line stack into its own layer, then crossfade over the old
+    // one (fade current line out while the next fades in).
+    const wrapper = document.createElement("div");
+    wrapper.className = "stack";
 
     const start = Math.max(0, idx - this.layout.before);
     const end = Math.min(this.prepared.length - 1, idx + this.layout.after);
@@ -139,24 +145,27 @@ export class Renderer {
       const el = document.createElement("div");
       el.className = i === idx ? "lyric-line current" : "lyric-line context";
       this.buildLine(el, p, i === idx);
-      this.container.appendChild(el);
-      requestAnimationFrame(() => el.classList.add("mounted"));
-
-      if (p.romaji) {
-        this.appendSubLine(p.romaji, "romaji-line", i === idx);
-      }
-      if (p.translation) {
-        this.appendSubLine(p.translation, "trans-line", i === idx);
-      }
+      wrapper.appendChild(el);
+      if (p.romaji) this.appendSubLine(wrapper, p.romaji, "romaji-line", i === idx);
+      if (p.translation) this.appendSubLine(wrapper, p.translation, "trans-line", i === idx);
     }
+
+    this.container.appendChild(wrapper);
+    requestAnimationFrame(() => wrapper.classList.add("mounted"));
+
+    const old = this.currentWrapper;
+    if (old) {
+      old.classList.add("leaving");
+      window.setTimeout(() => old.remove(), 380);
+    }
+    this.currentWrapper = wrapper;
   }
 
-  private appendSubLine(text: string, cls: string, isCurrent: boolean): void {
+  private appendSubLine(parent: HTMLElement, text: string, cls: string, isCurrent: boolean): void {
     const el = document.createElement("div");
     el.className = `${cls} ${isCurrent ? "current" : "context"}`;
     el.textContent = text;
-    this.container.appendChild(el);
-    requestAnimationFrame(() => el.classList.add("mounted"));
+    parent.appendChild(el);
   }
 
   private buildLine(el: HTMLElement, p: PreparedLine, isCurrent: boolean): void {

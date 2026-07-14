@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PlaybackClock, SNAP_THRESHOLD_MS } from "./clock";
+import { PlaybackClock } from "./clock";
 
 function playingClock(startPos = 0, at = 1000): PlaybackClock {
   const c = new PlaybackClock();
@@ -53,14 +53,12 @@ describe("PlaybackClock", () => {
     expect(c.estimate(2000)).toBeCloseTo(40_000, -1);
   });
 
-  it("slews small drift without a big jump", () => {
+  it("re-anchors to a fresh report (accurate, no persistent lag)", () => {
     const c = playingClock(10_000, 1000);
-    const before = c.estimate(2000); // ~11_000
+    // A fresh tick: position advanced to 11_300, sampled at t=2000.
     c.update({ positionMs: 11_300, reportedAtMs: 2000, rate: 1 }, 2000);
-    const justAfter = c.estimate(2000);
-    // The step is a fraction of the 300 ms drift — no visible jump.
-    expect(Math.abs(justAfter - before)).toBeLessThan(SNAP_THRESHOLD_MS);
-    expect(Math.abs(justAfter - before)).toBeLessThan(120);
+    expect(c.estimate(2000)).toBeCloseTo(11_300, 0);
+    expect(c.estimate(3000)).toBeCloseTo(12_300, 0);
   });
 
   it("does not jump when toggling pause/play", () => {

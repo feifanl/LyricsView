@@ -222,14 +222,35 @@ fn emit_timeline<R: Runtime>(app: &AppHandle<R>, session: &Session) {
         .filter(|r| *r > 0.0)
         .unwrap_or(1.0);
 
+    // The position was sampled at LastUpdatedTime, not now. Using it as the
+    // report timestamp lets the frontend extrapolate correctly — otherwise the
+    // highlight runs seconds behind when the player's position is stale.
+    let reported_at_ms = timeline
+        .LastUpdatedTime()
+        .ok()
+        .map(|dt| filetime_to_unix_ms(dt.UniversalTime))
+        .filter(|ms| *ms > 0)
+        .unwrap_or_else(now_ms);
+
     let _ = app.emit(
         EVT_TIMELINE,
         TimelinePayload {
             position_ms,
-            reported_at_ms: now_ms(),
+            reported_at_ms,
             rate,
         },
     );
+}
+
+/// Convert a Windows FILETIME (100 ns ticks since 1601) to Unix epoch ms.
+fn filetime_to_unix_ms(universal_time: i64) -> u64 {
+    const EPOCH_DIFF_100NS: i64 = 116_444_736_000_000_000; // 1601->1970
+    let unix_100ns = universal_time - EPOCH_DIFF_100NS;
+    if unix_100ns <= 0 {
+        0
+    } else {
+        (unix_100ns / 10_000) as u64
+    }
 }
 
 /// Enumerate all SMTC sessions with which one is current.
