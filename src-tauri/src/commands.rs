@@ -25,6 +25,21 @@ pub fn set_edit_mode<R: Runtime>(app: AppHandle<R>, enabled: bool) {
 }
 
 #[tauri::command]
+pub fn toggle_overlay<R: Runtime>(app: AppHandle<R>) {
+    crate::window::toggle_overlay(&app);
+}
+
+#[tauri::command]
+pub fn open_settings<R: Runtime>(app: AppHandle<R>) {
+    crate::window::open_settings(&app);
+}
+
+#[tauri::command]
+pub fn media_control<R: Runtime>(app: AppHandle<R>, action: String) -> Result<bool, String> {
+    smtc::control(&app, &action).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn list_smtc_sessions() -> Result<Vec<SessionInfo>, String> {
     smtc::list_sessions().map_err(|e| e.to_string())
 }

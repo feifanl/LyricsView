@@ -75,6 +75,15 @@ export const cmd = {
   setEditMode(enabled: boolean): Promise<void> {
     return invoke("set_edit_mode", { enabled });
   },
+  toggleOverlay(): Promise<void> {
+    return invoke("toggle_overlay");
+  },
+  openSettings(): Promise<void> {
+    return invoke("open_settings");
+  },
+  mediaControl(action: "toggle" | "next" | "prev"): Promise<boolean> {
+    return invoke("media_control", { action });
+  },
   currentTrackKey(): Promise<string | null> {
     return invoke("current_track_key");
   },
@@ -120,4 +129,12 @@ export function onReloadLyrics(cb: () => void): Promise<UnlistenFn> {
 /** Broadcast updated settings to all windows (settings window -> overlay). */
 export function emitSettingsChanged(settings: Settings): Promise<void> {
   return emit(EVT.settingsChanged, settings);
+}
+
+/** Drive an overlay lyric action (offset/line-jump/reload) from another window. */
+export function emitOverlayHotkey(action: HotkeyAction): Promise<void> {
+  return emit(EVT.hotkey, { action });
+}
+export function emitReloadLyrics(): Promise<void> {
+  return emit(EVT.reloadLyrics);
 }

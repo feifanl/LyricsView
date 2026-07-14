@@ -37,6 +37,13 @@ pub fn open_settings<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+pub fn open_control<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(w) = app.get_webview_window("control") {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+}
+
 /// Locked mode = click-through (ignore cursor events). Edit mode = interactive.
 pub fn set_edit_mode<R: Runtime>(app: &AppHandle<R>, enabled: bool) {
     if let Some(state) = app.try_state::<AppState>() {

@@ -55,6 +55,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::set_click_through,
             commands::set_edit_mode,
+            commands::toggle_overlay,
+            commands::open_settings,
+            commands::media_control,
             commands::list_smtc_sessions,
             commands::set_pinned_session,
             commands::current_track_key,

@@ -253,6 +253,21 @@ fn filetime_to_unix_ms(universal_time: i64) -> u64 {
     }
 }
 
+/// Send a transport command to the effective session (play/pause toggle, skip).
+pub fn control<R: Runtime>(app: &AppHandle<R>, action: &str) -> windows::core::Result<bool> {
+    let manager = SessionManager::RequestAsync()?.get()?;
+    let session = effective_session(&manager, app)?;
+    let op = match action {
+        "toggle" => session.TryTogglePlayPauseAsync()?,
+        "play" => session.TryPlayAsync()?,
+        "pause" => session.TryPauseAsync()?,
+        "next" => session.TrySkipNextAsync()?,
+        "prev" | "previous" => session.TrySkipPreviousAsync()?,
+        _ => return Ok(false),
+    };
+    op.get()
+}
+
 /// Enumerate all SMTC sessions with which one is current.
 pub fn list_sessions() -> windows::core::Result<Vec<SessionInfo>> {
     let manager = SessionManager::RequestAsync()?.get()?;

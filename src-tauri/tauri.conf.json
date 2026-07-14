@@ -34,6 +34,16 @@
         "resizable": true,
         "width": 920,
         "height": 660
+      },
+      {
+        "label": "control",
+        "url": "control.html",
+        "title": "Lyricify-OSS Controls",
+        "visible": false,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "width": 340,
+        "height": 440
       }
     ],
     "security": {
