@@ -28,7 +28,6 @@ export default defineConfig({
       input: {
         overlay: resolve(__dirname, "overlay.html"),
         settings: resolve(__dirname, "settings.html"),
-        control: resolve(__dirname, "control.html"),
       },
     },
   },

@@ -82,11 +82,14 @@ body.faded .overlay-root {
   color: var(--base-color);
   white-space: pre-wrap;
   word-break: break-word;
+  /* Text-only dimming/brightening, independent of the background box. */
+  opacity: var(--text-opacity, 1);
+  filter: brightness(var(--text-brightness, 1));
 }
 
 .lyric-line.context {
   font-size: calc(var(--font-size) * 0.72);
-  opacity: 0.4;
+  opacity: calc(0.4 * var(--text-opacity, 1));
 }
 
 .lyric-line.current.no-fill {
@@ -138,6 +141,7 @@ ruby rt {
 }
 
 .lyric-word {
+  display: inline-block;
   background-image: linear-gradient(
     90deg,
     var(--fill-color) calc(var(--p, 0) * 100%),
@@ -146,6 +150,23 @@ ruby rt {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  transform-origin: center 72%;
+  transition: transform 180ms cubic-bezier(0.22, 0.7, 0.24, 1), filter 180ms ease;
+}
+
+/* Spotlight mode: the active word lifts and glows in the fill color. */
+.lyric-word.active {
+  transform: scale(1.12);
+  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--fill-color) 65%, transparent));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyric-word {
+    transition: none;
+  }
+  .lyric-word.active {
+    transform: none;
+  }
 }
 
 .text-shadow .lyric-line {

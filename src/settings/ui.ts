@@ -43,17 +43,30 @@ export function numberInput(
   return input;
 }
 
-/** Color text field (supports #rrggbbaa) with a live swatch. */
+/** Extract the #rrggbb part of a color for the native picker (alpha stripped). */
+function hex6(value: string): string {
+  return /^#[0-9a-fA-F]{6,8}$/.test(value) ? value.slice(0, 7) : "#ffffff";
+}
+/** The trailing alpha (#..aa) of a hex8 color, or "" when none. */
+function alphaSuffix(value: string): string {
+  return /^#[0-9a-fA-F]{8}$/.test(value) ? value.slice(7) : "";
+}
+
+/** Color field: a native swatch picker plus a hex box that keeps #rrggbbaa. */
 export function colorInput(value: string, onChange: (v: string) => void): HTMLElement {
-  const swatch = el("span", { className: "swatch" });
-  swatch.style.background = value;
-  const input = el("input", { type: "text", value });
-  input.style.minWidth = "120px";
-  input.addEventListener("input", () => {
-    swatch.style.background = input.value;
-    onChange(input.value);
+  const picker = el("input", { type: "color", className: "color-picker", value: hex6(value) });
+  const text = el("input", { type: "text", className: "color-hex", value });
+
+  picker.addEventListener("input", () => {
+    const next = picker.value + alphaSuffix(text.value);
+    text.value = next;
+    onChange(next);
   });
-  return el("span", { className: "color-field" }, [swatch, input]);
+  text.addEventListener("input", () => {
+    picker.value = hex6(text.value);
+    onChange(text.value);
+  });
+  return el("span", { className: "color-field" }, [picker, text]);
 }
 
 export function checkbox(checked: boolean, onChange: (v: boolean) => void): HTMLInputElement {
@@ -101,4 +114,33 @@ export function button(
   const b = el("button", { className: cls, textContent: label });
   b.addEventListener("click", onClick);
   return b;
+}
+
+/** A titled panel that groups related controls. */
+export function card(title: string, children: (Node | string)[], opts: { wide?: boolean } = {}): HTMLElement {
+  const head = el("div", { className: "card-head" }, [el("span", { className: "card-title", textContent: title })]);
+  const body = el("div", { className: "card-body" }, children);
+  return el("div", { className: "card" + (opts.wide ? " card--wide" : "") }, [head, body]);
+}
+
+/** Segmented control — a compact set of mutually exclusive buttons. */
+export function segmented<T extends string>(
+  options: { value: T; label: string }[],
+  value: T,
+  onChange: (v: T) => void,
+): HTMLElement {
+  const wrap = el("div", { className: "seg" });
+  wrap.setAttribute("role", "radiogroup");
+  const btns: HTMLButtonElement[] = [];
+  for (const o of options) {
+    const b = el("button", { className: "seg-btn" + (o.value === value ? " active" : ""), textContent: o.label });
+    b.addEventListener("click", () => {
+      for (const x of btns) x.classList.remove("active");
+      b.classList.add("active");
+      onChange(o.value);
+    });
+    btns.push(b);
+    wrap.append(b);
+  }
+  return wrap;
 }

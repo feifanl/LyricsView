@@ -32,6 +32,7 @@ export class Renderer {
   private romanization: RomanizationCfg = NO_ROMANIZATION;
   private annVersion = 0;
   private currentWrapper: HTMLElement | null = null;
+  private showTranslation = false;
 
   constructor(private readonly container: HTMLElement) {}
 
@@ -43,6 +44,13 @@ export class Renderer {
   setRomanization(cfg: RomanizationCfg): void {
     this.romanization = cfg;
     void this.annotateAll();
+  }
+
+  /** Toggle the translated sub-line (Original vs Translated view). */
+  setShowTranslation(show: boolean): void {
+    if (show === this.showTranslation) return;
+    this.showTranslation = show;
+    this.currentIdx = -1; // rebuild the stack to add/remove the sub-line
   }
 
   setDoc(doc: LyricsDoc | null): void {
@@ -124,7 +132,9 @@ export class Renderer {
       if (idx < 0) this.clearStack();
       else this.rebuildStack(idx);
     }
-    if (idx >= 0 && this.layout.animation === "fill") this.updateFill(pos);
+    if (idx < 0) return;
+    if (this.layout.animation === "fill") this.updateFill(pos);
+    else if (this.layout.animation === "spotlight") this.updateSpotlight(pos);
   }
 
   private lineIndexAt(pos: number): number {
@@ -184,7 +194,7 @@ export class Renderer {
       this.buildLine(el, p, i === idx);
       wrapper.appendChild(el);
       if (p.romaji) this.appendSubLine(wrapper, p.romaji, "romaji-line", i === idx);
-      if (p.translation) this.appendSubLine(wrapper, p.translation, "trans-line", i === idx);
+      if (p.translation && this.showTranslation) this.appendSubLine(wrapper, p.translation, "trans-line", i === idx);
     }
 
     this.container.appendChild(wrapper);
@@ -220,12 +230,14 @@ export class Renderer {
   }
 
   private buildWordSpans(lineEl: HTMLElement, words: LyricWord[]): void {
-    const full = this.layout.animation !== "fill"; // fade/none: fill instantly
+    // fade = legacy whole-line fill (start filled); every other mode starts flat
+    // in the base color and is driven per-frame (fill sweep / spotlight pop).
+    const startFilled = this.layout.animation === "fade";
     for (const w of words) {
       const span = document.createElement("span");
       span.className = "lyric-word";
       span.textContent = w.text;
-      span.style.setProperty("--p", full ? "1" : "0");
+      span.style.setProperty("--p", startFilled ? "1" : "0");
       lineEl.appendChild(span);
       this.wordSpans.push(span);
     }
@@ -257,6 +269,32 @@ export class Renderer {
       const span = this.wordSpans[active];
       const frac = w.end > w.start ? Math.min(1, Math.max(0, (pos - w.start) / (w.end - w.start))) : 1;
       span?.style.setProperty("--p", String(frac));
+    }
+    this.prevActive = active;
+  }
+
+  /** Spotlight: the single active word snaps to the fill color and pops; all
+   *  others sit flat in the base color. Only the changed words are touched. */
+  private updateSpotlight(pos: number): void {
+    const words = this.prepared[this.currentIdx]?.words;
+    if (!words || this.wordSpans.length === 0) return;
+
+    let active = -1;
+    for (let i = 0; i < words.length; i++) {
+      if (words[i]!.start <= pos) active = i;
+      else break;
+    }
+    if (active === this.prevActive) return;
+
+    const prev = this.wordSpans[this.prevActive];
+    if (prev) {
+      prev.style.setProperty("--p", "0");
+      prev.classList.remove("active");
+    }
+    const cur = this.wordSpans[active];
+    if (cur) {
+      cur.style.setProperty("--p", "1");
+      cur.classList.add("active");
     }
     this.prevActive = active;
   }

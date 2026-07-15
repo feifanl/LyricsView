@@ -56,7 +56,14 @@ async function boot(): Promise<void> {
   };
 
   function renderNav(): void {
+    const brand = document.createElement("div");
+    brand.className = "brand";
+    brand.append(
+      Object.assign(document.createElement("span"), { className: "brand-mark" }),
+      Object.assign(document.createElement("span"), { className: "brand-name", textContent: "Lyricify" }),
+    );
     tabsEl.replaceChildren(
+      brand,
       ...tabs.map((t) => {
         const b = document.createElement("button");
         b.className = "tab-btn" + (t.id === active ? " active" : "");

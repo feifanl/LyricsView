@@ -31,7 +31,8 @@ let globalOffsetMs = 0;
 let trackOffsetMs = 0;
 let trackKey: string | null = null;
 let toastTimer = 0;
-let translationEnabled = false;
+let showTranslation = false; // Original vs Translated view
+let aiEnabled = false; // allow AI to fill lines with no built-in translation
 let currentSettings: Settings | null = null;
 let autoHideEnabled = true;
 let autoHideDelayMs = 5000;
@@ -106,6 +107,7 @@ function applyLayout(settings: Settings): void {
     animation: p.animation,
   });
   renderer.setRomanization(settings.romanization);
+  renderer.setShowTranslation(settings.translation.show);
 }
 
 function frame(): void {
@@ -153,7 +155,7 @@ async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
       hasDoc = true;
       void maybeTranslate(doc);
     } else {
-      setStatus("♪ no lyrics");
+      setStatus("♪ no lyrics found");
     }
   } catch (e) {
     if (seq !== loadSeq) return;
@@ -162,11 +164,21 @@ async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
   }
 }
 
+// Prefer built-in (fetched) translations; only call the AI provider to fill
+// lines that arrived without one, and only when the user opted into the
+// translated view and configured a key.
 async function maybeTranslate(doc: LyricsDoc): Promise<void> {
-  if (!translationEnabled || doc.lines.length === 0) return;
+  if (!showTranslation || doc.lines.length === 0) return;
+  const missing = doc.lines.filter((l) => !l.translation);
+  if (missing.length === 0) return; // built-in translations cover everything
+  if (!aiEnabled) return; // no AI fallback configured — show what we have
   try {
-    const out = await cmd.translateLines(doc.lines.map((l) => l.text));
-    if (currentDoc === doc) renderer.setTranslations(out);
+    const filled = await cmd.translateLines(missing.map((l) => l.text));
+    if (currentDoc !== doc) return;
+    // Merge AI results back, keeping every built-in translation as-is.
+    let k = 0;
+    const merged = doc.lines.map((l) => l.translation ?? filled[k++] ?? "");
+    renderer.setTranslations(merged);
   } catch (e) {
     console.error("[overlay] translate failed", e);
   }
@@ -226,7 +238,8 @@ async function boot(): Promise<void> {
   const settings = await loadSettings();
   currentSettings = settings;
   globalOffsetMs = settings.globalOffsetMs;
-  translationEnabled = settings.translation.enabled;
+  showTranslation = settings.translation.show;
+  aiEnabled = settings.translation.enabled;
   autoHideEnabled = settings.autoHide.enabled;
   autoHideDelayMs = settings.autoHide.delaySec * 1000;
   applyOffsets();
@@ -269,7 +282,8 @@ async function boot(): Promise<void> {
   await onSettingsChanged((s) => {
     currentSettings = s;
     globalOffsetMs = s.globalOffsetMs;
-    translationEnabled = s.translation.enabled;
+    showTranslation = s.translation.show;
+    aiEnabled = s.translation.enabled;
     autoHideEnabled = s.autoHide.enabled;
     autoHideDelayMs = s.autoHide.delaySec * 1000;
     if (!autoHideEnabled) setFaded(false);
@@ -278,7 +292,7 @@ async function boot(): Promise<void> {
     applyLayout(s);
     // Re-dock / re-place live when the preset or dock mode changes.
     void restoreGeometry(activePreset(s));
-    if (translationEnabled && currentDoc) void maybeTranslate(currentDoc);
+    if (showTranslation && currentDoc) void maybeTranslate(currentDoc);
   });
 
   setStatus("waiting for a player…");

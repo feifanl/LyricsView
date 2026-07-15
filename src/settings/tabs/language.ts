@@ -24,14 +24,19 @@ function render(ctx: SettingsCtx): HTMLElement {
     field("Russian → translit", checkbox(s.romanization.ru, (v) => void ctx.patch((n) => (n.romanization.ru = v)))),
   );
 
-  root.append(section("Translation (your API key)"));
+  root.append(section("AI translation fallback"));
   root.append(
+    el("div", {
+      className: "hint",
+      textContent:
+        "Turn on Translated in the Overlay tab to show translations. Built-in provider translations are used first; AI only fills lines without one.",
+    }),
     el("div", {
       className: "notice warn",
       textContent:
         "API key is stored locally in plain text. Lines are translated once per track (batched) and cached — never re-translated during playback.",
     }),
-    field("Enabled", checkbox(s.translation.enabled, (v) => void ctx.update((n) => (n.translation.enabled = v)))),
+    field("Use AI fallback", checkbox(s.translation.enabled, (v) => void ctx.update((n) => (n.translation.enabled = v)))),
     field(
       "Provider",
       select(

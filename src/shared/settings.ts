@@ -18,7 +18,9 @@ export interface RomanizationCfg {
 }
 
 export type BackgroundStyle = "none" | "glass" | "solid";
-export type AnimationStyle = "fill" | "fade" | "none";
+// Highlight modes: none = flat line, fill = progressive karaoke sweep,
+// spotlight = pop the single word being sung. (fade = legacy whole-line.)
+export type AnimationStyle = "fill" | "spotlight" | "fade" | "none";
 export type ContextCount = 0 | 1 | 2;
 /** Float = free position (edit-mode drag). Top/bottom = full-width edge bar. */
 export type DockMode = "float" | "top" | "bottom";
@@ -32,6 +34,10 @@ export interface Preset {
   size: { w: number; h: number };
   font: { family: string; sizePx: number; weight: number };
   colors: { base: string; fill: string; textShadow: boolean; outline: boolean };
+  /** Text-only opacity (0.1–1) and brightness (0.5–1.5), independent of the
+   *  background box, which uses `opacity`. */
+  textOpacity: number;
+  textBrightness: number;
   opacity: number;
   background: BackgroundStyle;
   backgroundColor: string;
@@ -54,6 +60,10 @@ export interface Settings {
     storefront: string;
   };
   translation: {
+    /** Show the translated line under the lyrics (Original vs Translated view).
+     *  Built-in provider translations are preferred; AI is a fallback. */
+    show: boolean;
+    /** Allow AI translation to fill lines with no built-in translation. */
     enabled: boolean;
     provider: "deepl" | "google" | "openai";
     apiKey: string;
@@ -69,7 +79,7 @@ export interface Settings {
   uiTheme: "light" | "dark";
 }
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const DEFAULT_HOTKEYS: Record<HotkeyAction, string> = {
   toggleOverlay: "Alt+Shift+L",
@@ -90,6 +100,8 @@ function gamingPreset(): Preset {
     size: { w: 520, h: 84 },
     font: { family: "Segoe UI", sizePx: 24, weight: 600 },
     colors: { base: "#ffffffcc", fill: "#7dd3fc", textShadow: true, outline: false },
+    textOpacity: 1,
+    textBrightness: 1,
     opacity: 0.6,
     background: "none",
     backgroundColor: "#000000aa",
@@ -108,6 +120,8 @@ function karaokePreset(): Preset {
     size: { w: 900, h: 260 },
     font: { family: "Segoe UI", sizePx: 40, weight: 700 },
     colors: { base: "#ffffffdd", fill: "#ffd54f", textShadow: true, outline: false },
+    textOpacity: 1,
+    textBrightness: 1,
     opacity: 1,
     background: "glass",
     backgroundColor: "rgba(18,18,26,0.28)",
@@ -127,6 +141,8 @@ function glassBarPreset(): Preset {
     size: { w: 1120, h: 88 },
     font: { family: "Segoe UI", sizePx: 27, weight: 600 },
     colors: { base: "#ffffffe6", fill: "#8be9fd", textShadow: false, outline: false },
+    textOpacity: 1,
+    textBrightness: 1,
     opacity: 1,
     background: "glass",
     backgroundColor: "rgba(18,18,26,0.28)",
@@ -156,6 +172,7 @@ export function defaultSettings(): Settings {
     preferWordLevel: true,
     appleMusic: { mediaUserToken: "", developerToken: "", storefront: "us" },
     translation: {
+      show: false,
       enabled: false,
       provider: "deepl",
       apiKey: "",

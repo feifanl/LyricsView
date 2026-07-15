@@ -11,6 +11,8 @@ export function applyPresetVars(settings: Settings): void {
   root.style.setProperty("--font-family", `"${p.font.family}", system-ui, sans-serif`);
   root.style.setProperty("--font-weight", String(p.font.weight));
   root.style.setProperty("--line-spacing", String(p.lineSpacing));
+  root.style.setProperty("--text-opacity", String(p.textOpacity ?? 1));
+  root.style.setProperty("--text-brightness", String(p.textBrightness ?? 1));
 
   const overlayRoot = document.querySelector<HTMLElement>(".overlay-root");
   if (overlayRoot) overlayRoot.style.opacity = String(p.opacity);
