@@ -1,5 +1,5 @@
 // Appearance tab: pick/edit/create presets with live overlay updates.
-import type { AnimationStyle, BackgroundStyle, ContextCount, Preset } from "../../shared/settings";
+import type { AnimationStyle, BackgroundStyle, ContextCount, DockMode, Preset } from "../../shared/settings";
 import type { SettingsCtx, Tab } from "../tab";
 import { button, checkbox, colorInput, el, field, numberInput, range, section, select } from "../ui";
 
@@ -76,6 +76,19 @@ function render(ctx: SettingsCtx): HTMLElement {
 
   root.append(section("Background & layout"));
   root.append(
+    field(
+      "Dock",
+      select<DockMode>(
+        [
+          { value: "float", label: "Float (drag in edit mode)" },
+          { value: "top", label: "Top bar (full width)" },
+          { value: "bottom", label: "Bottom bar (full width)" },
+        ],
+        preset.dock ?? "float",
+        (v) => edit((p) => (p.dock = v)),
+      ),
+    ),
+    field("Bar height (px)", numberInput(preset.size.h, (v) => edit((p) => (p.size.h = v)), { min: 40, max: 400 })),
     field(
       "Background",
       select<BackgroundStyle>(

@@ -276,6 +276,8 @@ async function boot(): Promise<void> {
     applyOffsets();
     applyPresetVars(s);
     applyLayout(s);
+    // Re-dock / re-place live when the preset or dock mode changes.
+    void restoreGeometry(activePreset(s));
     if (translationEnabled && currentDoc) void maybeTranslate(currentDoc);
   });
 

@@ -187,6 +187,34 @@ ruby rt {
   -webkit-backdrop-filter: blur(30px) saturate(1.8);
 }
 
+/* Docked bar: full-width rectangle flush against the monitor edge. */
+body.docked .overlay-root {
+  padding: 0;
+}
+body.docked .lyrics {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+body.docked .lyrics.bg-solid,
+body.docked .lyrics.bg-glass {
+  border-radius: 0;
+  width: 100%;
+  max-width: 100%;
+  padding: 6px 28px;
+  border-left: none;
+  border-right: none;
+  box-shadow: none;
+}
+/* Keep a single hairline on the inner edge only. */
+body.dock-top .lyrics.bg-glass {
+  border-top: none;
+}
+body.dock-bottom .lyrics.bg-glass {
+  border-bottom: none;
+}
+
 .toast {
   position: absolute;
   top: 10px;

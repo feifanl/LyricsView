@@ -48,6 +48,9 @@ export function initEditMode(): void {
       const geo = await captureGeometry();
       const settings = await loadSettings();
       const preset = activePreset(settings);
+      // Docked bars derive their geometry from the monitor edge; persisting a
+      // drag would corrupt the saved bar height/width.
+      if ((preset.dock ?? "float") !== "float") return;
       preset.monitor = geo.monitor;
       preset.position = geo.position;
       preset.size = geo.size;

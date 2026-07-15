@@ -25,4 +25,9 @@ export function applyPresetVars(settings: Settings): void {
   const body = document.body;
   body.classList.toggle("text-shadow", p.colors.textShadow);
   body.classList.toggle("outline", p.colors.outline);
+
+  const dock = p.dock ?? "float";
+  body.classList.toggle("docked", dock !== "float");
+  body.classList.toggle("dock-top", dock === "top");
+  body.classList.toggle("dock-bottom", dock === "bottom");
 }

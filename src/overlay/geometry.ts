@@ -31,6 +31,20 @@ async function pickMonitor(index: number | null): Promise<Monitor | null> {
 export async function restoreGeometry(preset: Preset): Promise<void> {
   const win = getCurrentWindow();
   const { w, h } = preset.size;
+
+  // Docked: full-width bar pinned flush to the monitor's top or bottom edge.
+  // Saved position/width are ignored; only the bar height is preset-driven.
+  const dock = preset.dock ?? "float";
+  if (dock !== "float") {
+    const mon = await pickMonitor(preset.monitor);
+    if (!mon) return;
+    const barH = Math.round(h);
+    await win.setSize(new PhysicalSize(mon.size.width, barH));
+    const y = dock === "top" ? mon.position.y : mon.position.y + mon.size.height - barH;
+    await win.setPosition(new PhysicalPosition(mon.position.x, y));
+    return;
+  }
+
   await win.setSize(new PhysicalSize(Math.round(w), Math.round(h)));
 
   const mon = await pickMonitor(preset.monitor);

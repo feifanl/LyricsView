@@ -20,10 +20,14 @@ export interface RomanizationCfg {
 export type BackgroundStyle = "none" | "glass" | "solid";
 export type AnimationStyle = "fill" | "fade" | "none";
 export type ContextCount = 0 | 1 | 2;
+/** Float = free position (edit-mode drag). Top/bottom = full-width edge bar. */
+export type DockMode = "float" | "top" | "bottom";
 
 export interface Preset {
   name: string;
   monitor: number | null;
+  /** Ignored while docked; the bar is pinned to the monitor edge. */
+  dock: DockMode;
   position: { x: number; y: number } | null;
   size: { w: number; h: number };
   font: { family: string; sizePx: number; weight: number };
@@ -65,7 +69,7 @@ export interface Settings {
   uiTheme: "light" | "dark";
 }
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const DEFAULT_HOTKEYS: Record<HotkeyAction, string> = {
   toggleOverlay: "Alt+Shift+L",
@@ -81,6 +85,7 @@ function gamingPreset(): Preset {
   return {
     name: "Gaming",
     monitor: null,
+    dock: "float",
     position: null,
     size: { w: 520, h: 84 },
     font: { family: "Segoe UI", sizePx: 24, weight: 600 },
@@ -98,6 +103,7 @@ function karaokePreset(): Preset {
   return {
     name: "Karaoke",
     monitor: null,
+    dock: "float",
     position: null,
     size: { w: 900, h: 260 },
     font: { family: "Segoe UI", sizePx: 40, weight: 700 },
@@ -116,8 +122,9 @@ function glassBarPreset(): Preset {
   return {
     name: "Glass Bar",
     monitor: null,
+    dock: "top",
     position: null,
-    size: { w: 1120, h: 104 },
+    size: { w: 1120, h: 88 },
     font: { family: "Segoe UI", sizePx: 27, weight: 600 },
     colors: { base: "#ffffffe6", fill: "#8be9fd", textShadow: false, outline: false },
     opacity: 1,
