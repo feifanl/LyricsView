@@ -188,6 +188,11 @@ fn emit_track<R: Runtime>(app: &AppHandle<R>, session: &Session) {
         }
         *last = Some(track.clone());
         *state.current_track.lock().unwrap() = Some(track.clone());
+        // Force the playback state to re-emit for the new track: the overlay
+        // clock resets `playing` to false on track change, and without a fresh
+        // EVT_STATE (deduped when the status is unchanged) it never learns the
+        // new song is already playing, so the clock stays frozen.
+        *state.last_playing.lock().unwrap() = None;
     }
     let _ = app.emit(EVT_TRACK, track);
 }

@@ -121,12 +121,16 @@ export class Renderer {
     const idx = this.lineIndexAt(pos);
     if (idx !== this.currentIdx) {
       this.currentIdx = idx;
-      this.rebuildStack(idx);
+      if (idx < 0) this.clearStack();
+      else this.rebuildStack(idx);
     }
-    if (this.layout.animation === "fill") this.updateFill(pos);
+    if (idx >= 0 && this.layout.animation === "fill") this.updateFill(pos);
   }
 
   private lineIndexAt(pos: number): number {
+    // Before the first line starts (long intro), show nothing — otherwise the
+    // first line would appear during the whole pre-roll.
+    if (this.prepared.length === 0 || pos < this.prepared[0]!.line.start) return -1;
     let lo = 0;
     let hi = this.prepared.length - 1;
     let found = 0;
@@ -140,6 +144,18 @@ export class Renderer {
       }
     }
     return found;
+  }
+
+  /** Fade out the current stack, leaving the box empty (intro pre-roll). */
+  private clearStack(): void {
+    this.wordSpans = [];
+    this.prevActive = -1;
+    const old = this.currentWrapper;
+    if (old) {
+      old.classList.add("leaving");
+      window.setTimeout(() => old.remove(), 380);
+    }
+    this.currentWrapper = null;
   }
 
   private renderPlain(): void {
