@@ -262,7 +262,9 @@ async function boot(): Promise<void> {
   });
   await onHotkey(handleHotkey);
   await onReloadLyrics(() => {
-    if (currentTrack) void loadLyrics(currentTrack, false);
+    // Force: a manual reload must bypass the cache, otherwise it can never
+    // upgrade a cached line-level doc to a word-level one.
+    if (currentTrack) void loadLyrics(currentTrack, true);
   });
   await onSettingsChanged((s) => {
     currentSettings = s;
