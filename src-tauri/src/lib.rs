@@ -45,6 +45,19 @@ pub fn run() {
                 let _ = overlay.set_ignore_cursor_events(true);
             }
 
+            // The settings window is created once and reused. Closing it (X)
+            // would otherwise destroy the webview, after which get_webview_window
+            // returns None and "Settings" can never reopen it. Hide instead.
+            if let Some(settings) = window::settings_window(handle) {
+                let w = settings.clone();
+                settings.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = w.hide();
+                    }
+                });
+            }
+
             // Register global shortcuts from persisted settings.
             hotkeys::apply(handle);
 

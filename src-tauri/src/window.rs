@@ -32,6 +32,7 @@ pub fn toggle_overlay<R: Runtime>(app: &AppHandle<R>) {
 
 pub fn open_settings<R: Runtime>(app: &AppHandle<R>) {
     if let Some(w) = settings_window(app) {
+        let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
     }
