@@ -326,8 +326,33 @@ async function boot(): Promise<void> {
     if (showTranslation && currentDoc) void maybeTranslate(currentDoc);
   });
 
+  // Seed from whatever is already playing. The Rust watcher emits the initial
+  // track during app setup — before these listeners exist — and then dedupes,
+  // so without this pull the overlay would sit on "waiting" until the next song.
+  // The watcher thread may still be initializing at boot, so retry briefly; if
+  // onTrackChanged fires first, currentTrack guards against a double load.
   setStatus("waiting for a player…");
+  void seedCurrentTrack();
   requestAnimationFrame(frame);
+}
+
+async function seedCurrentTrack(): Promise<void> {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    if (currentTrack) return; // a real track-changed event already seeded us
+    try {
+      const existing = await cmd.currentTrack();
+      if (existing) {
+        setFaded(false);
+        clock.reset();
+        lastTimelinePos = -1;
+        void loadLyrics(existing, false);
+        return;
+      }
+    } catch {
+      // watcher not ready yet — fall through to retry
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
 }
 
 void boot();
