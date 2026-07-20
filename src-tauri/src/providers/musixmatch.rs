@@ -26,6 +26,8 @@ const APP_ID: &str = "web-desktop-app-v1.0";
 
 pub struct Musixmatch {
     token_path: Option<PathBuf>,
+    /// Target language for the keyless crowd-translation lookup (None = off).
+    translate_to: Option<String>,
 }
 
 impl Musixmatch {
@@ -35,7 +37,11 @@ impl Musixmatch {
             .app_data_dir()
             .ok()
             .map(|d| d.join("musixmatch_token.json"));
-        Self { token_path }
+        let translate_to = crate::config::load(app).translation.wanted_lang();
+        Self {
+            token_path,
+            translate_to,
+        }
     }
 
     fn load_token(&self) -> Option<String> {
@@ -142,6 +148,72 @@ impl Musixmatch {
             .as_str()
             .map(str::to_string)
     }
+
+    /// Keyless crowd translations for the track into `lang`, as (original,
+    /// translation) pairs. Fail-soft: any error yields an empty list.
+    async fn translations(
+        &self,
+        http: &Client,
+        token: &str,
+        track_id: i64,
+        lang: &str,
+    ) -> Vec<(String, String)> {
+        let id = track_id.to_string();
+        let Some(v) = get_json(
+            http,
+            "crowd.track.translations.get",
+            &[
+                ("app_id", APP_ID),
+                ("track_id", &id),
+                ("selected_language", lang),
+                ("comment_format", "text"),
+                ("part", "user"),
+                ("translation_fields_set", "minimal"),
+            ],
+            Some(token),
+        )
+        .await
+        else {
+            return Vec::new();
+        };
+        let Some(list) =
+            dig(&v, &["message", "body", "translations_list"]).and_then(Value::as_array)
+        else {
+            return Vec::new();
+        };
+        list.iter()
+            .filter_map(|item| {
+                let t = item.get("translation")?;
+                let original = t.get("matched_line").and_then(Value::as_str)?.trim();
+                let translated = t.get("description").and_then(Value::as_str)?.trim();
+                (!original.is_empty() && !translated.is_empty())
+                    .then(|| (original.to_string(), translated.to_string()))
+            })
+            .collect()
+    }
+
+    /// Enrich a doc with crowd translations, matching by original line text.
+    async fn enrich_translations(&self, http: &Client, token: &str, track_id: i64, doc: &mut LyricsDoc) {
+        let Some(lang) = &self.translate_to else {
+            return;
+        };
+        if doc.lines.is_empty() {
+            return;
+        }
+        let pairs = self.translations(http, token, track_id, lang).await;
+        if pairs.is_empty() {
+            return;
+        }
+        for line in doc.lines.iter_mut() {
+            let key = line.text.trim();
+            if key.is_empty() {
+                continue;
+            }
+            if let Some((_, tr)) = pairs.iter().find(|(orig, _)| orig == key) {
+                line.translation = Some(tr.clone());
+            }
+        }
+    }
 }
 
 impl Provider for Musixmatch {
@@ -156,16 +228,21 @@ impl Provider for Musixmatch {
             return None;
         }
 
+        let mut doc = None;
         if has_richsync {
             if let Some(body) = self.richsync(http, &token, track_id).await {
-                if let Ok(doc) = parse_richsync(&body, &key) {
-                    return Some(doc);
-                }
+                doc = parse_richsync(&body, &key).ok();
             }
         }
         // Fall back to line-level subtitles.
-        let lrc = lrc?;
-        parse_lrc(&lrc, SourceId::Musixmatch, &key).ok()
+        if doc.is_none() {
+            doc = parse_lrc(lrc.as_deref()?, SourceId::Musixmatch, &key).ok();
+        }
+        let mut doc = doc?;
+        // Keyless crowd translations (e.g. zh -> en) attached per line when the
+        // user shows translations; AI stays a later fallback for missing lines.
+        self.enrich_translations(http, &token, track_id, &mut doc).await;
+        Some(doc)
     }
 
     async fn search(&self, http: &Client, query: &str) -> Vec<SearchCandidate> {
@@ -199,24 +276,28 @@ impl Provider for Musixmatch {
         let token = self.user_token(http).await?;
         let track_id: i64 = cand.id.parse().ok()?;
         let key = super::candidate_key(cand);
+        let mut doc = None;
         if let Some(body) = self.richsync(http, &token, track_id).await {
-            if let Ok(doc) = parse_richsync(&body, &key) {
-                return Some(doc);
-            }
+            doc = parse_richsync(&body, &key).ok();
         }
-        // Line-level fallback via track.subtitles.get.
-        let v = get_json(
-            http,
-            "track.subtitles.get",
-            &[("app_id", APP_ID), ("track_id", &cand.id), ("subtitle_format", "lrc")],
-            Some(&token),
-        )
-        .await?;
-        let lrc = dig(&v, &["message", "body", "subtitle_list"])
-            .and_then(|l| l.get(0))
-            .and_then(|s| dig(s, &["subtitle", "subtitle_body"]))?
-            .as_str()?;
-        parse_lrc(lrc, SourceId::Musixmatch, &key).ok()
+        if doc.is_none() {
+            // Line-level fallback via track.subtitles.get.
+            let v = get_json(
+                http,
+                "track.subtitles.get",
+                &[("app_id", APP_ID), ("track_id", &cand.id), ("subtitle_format", "lrc")],
+                Some(&token),
+            )
+            .await?;
+            let lrc = dig(&v, &["message", "body", "subtitle_list"])
+                .and_then(|l| l.get(0))
+                .and_then(|s| dig(s, &["subtitle", "subtitle_body"]))?
+                .as_str()?;
+            doc = parse_lrc(lrc, SourceId::Musixmatch, &key).ok();
+        }
+        let mut doc = doc?;
+        self.enrich_translations(http, &token, track_id, &mut doc).await;
+        Some(doc)
     }
 }
 

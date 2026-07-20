@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { RomanizationCfg } from "../shared/settings";
 import { annotate, detectScript } from "./romanize";
 
-const ALL: RomanizationCfg = { ja: true, jaFurigana: false, zh: true, ko: true, ru: true };
+const ALL: RomanizationCfg = { auto: false, ja: true, jaFurigana: false, zh: true, ko: true, ru: true };
 
 describe("detectScript", () => {
   it("detects Japanese by kana", () => {
@@ -42,5 +42,11 @@ describe("annotate", () => {
   it("returns empty for Latin text", async () => {
     const ann = await annotate("hello", ALL);
     expect(ann).toEqual({});
+  });
+
+  it("auto romanizes any non-Latin script with per-language flags off", async () => {
+    const auto: RomanizationCfg = { auto: true, ja: false, jaFurigana: false, zh: false, ko: false, ru: false };
+    const ann = await annotate("我爱你", auto);
+    expect(ann.romaji).toBeTruthy();
   });
 });

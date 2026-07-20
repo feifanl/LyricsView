@@ -40,6 +40,9 @@ impl AppleMusicCfg {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TranslationCfg {
+    /// Show translations at all (Original vs Translated view). Gates the keyless
+    /// provider translation lookup so we don't fetch when the user hides them.
+    pub show: bool,
     pub enabled: bool,
     pub provider: String,
     pub api_key: String,
@@ -51,6 +54,7 @@ pub struct TranslationCfg {
 impl Default for TranslationCfg {
     fn default() -> Self {
         Self {
+            show: true,
             enabled: false,
             provider: "deepl".into(),
             api_key: String::new(),
@@ -58,6 +62,15 @@ impl Default for TranslationCfg {
             model: String::new(),
             target_lang: "en".into(),
         }
+    }
+}
+
+impl TranslationCfg {
+    /// Target language for the keyless provider translation lookup, or None when
+    /// translations are hidden or the target is unset.
+    pub fn wanted_lang(&self) -> Option<String> {
+        let lang = self.target_lang.trim();
+        (self.show && !lang.is_empty()).then(|| lang.to_lowercase())
     }
 }
 

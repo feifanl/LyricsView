@@ -38,7 +38,11 @@ function mergeDefaults(raw: Partial<Settings> | undefined): Settings {
     activePreset: migrate ? base.activePreset : (raw.activePreset ?? base.activePreset),
     providersEnabled: { ...base.providersEnabled, ...raw.providersEnabled },
     appleMusic: { ...base.appleMusic, ...raw.appleMusic },
-    translation: { ...base.translation, ...raw.translation },
+    // On migration, adopt the new default for `show` (translate by default)
+    // while preserving functional config like provider/key/target language.
+    translation: migrate
+      ? { ...base.translation, ...raw.translation, show: base.translation.show }
+      : { ...base.translation, ...raw.translation },
     romanization: { ...base.romanization, ...raw.romanization },
     hotkeys: { ...base.hotkeys, ...raw.hotkeys },
     autoHide: { ...base.autoHide, ...raw.autoHide },

@@ -29,15 +29,17 @@ export function detectScript(text: string): Script {
 }
 
 function scriptEnabled(script: Script, cfg: RomanizationCfg): boolean {
+  // `auto` romanizes every detected non-Latin script; per-language flags act as
+  // overrides to enable a single script while auto is off.
   switch (script) {
     case "ja":
-      return cfg.ja;
+      return cfg.auto || cfg.ja;
     case "zh":
-      return cfg.zh;
+      return cfg.auto || cfg.zh;
     case "ko":
-      return cfg.ko;
+      return cfg.auto || cfg.ko;
     case "ru":
-      return cfg.ru;
+      return cfg.auto || cfg.ru;
     default:
       return false;
   }
@@ -123,5 +125,5 @@ export async function annotate(text: string, cfg: RomanizationCfg): Promise<Anno
 }
 
 export function romanizationActive(cfg: RomanizationCfg): boolean {
-  return cfg.ja || cfg.zh || cfg.ko || cfg.ru;
+  return cfg.auto || cfg.ja || cfg.zh || cfg.ko || cfg.ru;
 }

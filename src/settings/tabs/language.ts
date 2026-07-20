@@ -11,7 +11,21 @@ function render(ctx: SettingsCtx): HTMLElement {
   root.append(
     el("div", {
       className: "hint",
-      textContent: "Shows a romanized sub-line under matching lyrics. Applied live.",
+      textContent:
+        "For lyrics in a non-Latin alphabet (Japanese, Chinese, Korean, Russian), shows a romanized sub-line under each line. Script is auto-detected; applied live.",
+    }),
+    field(
+      "Show romanization",
+      checkbox(s.romanization.auto, (v) => void ctx.patch((n) => (n.romanization.auto = v))),
+      "Auto-detect the script and romanize any non-Latin lyrics.",
+    ),
+  );
+
+  root.append(section("Per-script overrides (advanced)"));
+  root.append(
+    el("div", {
+      className: "hint",
+      textContent: "Enable a single script even with auto off, or turn on Japanese furigana.",
     }),
     field("Japanese → romaji", checkbox(s.romanization.ja, (v) => void ctx.patch((n) => (n.romanization.ja = v)))),
     field(

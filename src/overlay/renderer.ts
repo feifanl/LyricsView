@@ -20,7 +20,7 @@ export interface RenderLayout {
   animation: AnimationStyle;
 }
 
-const NO_ROMANIZATION: RomanizationCfg = { ja: false, jaFurigana: false, zh: false, ko: false, ru: false };
+const NO_ROMANIZATION: RomanizationCfg = { auto: false, ja: false, jaFurigana: false, zh: false, ko: false, ru: false };
 
 export class Renderer {
   private prepared: PreparedLine[] = [];

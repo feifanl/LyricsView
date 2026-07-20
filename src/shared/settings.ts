@@ -12,6 +12,10 @@ export type HotkeyAction =
   | "reloadLyrics";
 
 export interface RomanizationCfg {
+  /** Auto-romanize any detected non-Latin script (JA/ZH/KO/RU). When on it
+   *  covers all four; the per-language flags below are advanced overrides for
+   *  enabling a single script while auto is off. */
+  auto: boolean;
   ja: boolean;
   jaFurigana: boolean;
   zh: boolean;
@@ -81,7 +85,7 @@ export interface Settings {
   uiTheme: "light" | "dark";
 }
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const DEFAULT_HOTKEYS: Record<HotkeyAction, string> = {
   toggleOverlay: "Alt+Shift+L",
@@ -176,7 +180,10 @@ export function defaultSettings(): Settings {
     preferWordLevel: true,
     appleMusic: { mediaUserToken: "", developerToken: "", storefront: "us" },
     translation: {
-      show: false,
+      // On by default: non-English songs that ship a built-in translation show
+      // original + translation automatically. Songs with no translation show
+      // nothing extra, so English lyrics stay clean.
+      show: true,
       enabled: false,
       provider: "deepl",
       apiKey: "",
@@ -184,7 +191,7 @@ export function defaultSettings(): Settings {
       model: "",
       targetLang: "en",
     },
-    romanization: { ja: false, jaFurigana: false, zh: false, ko: false, ru: false },
+    romanization: { auto: false, ja: false, jaFurigana: false, zh: false, ko: false, ru: false },
     hotkeys: { ...DEFAULT_HOTKEYS },
     autoHide: { enabled: true, delaySec: 5 },
     globalOffsetMs: 0,
