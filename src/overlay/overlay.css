@@ -3,7 +3,11 @@
   --base-color: #ffffffcc;
   --fill-color: #4fc3f7;
   --line-spacing: 1.3;
-  --font-size: 40px;
+  /* Preset font size; the effective size is scaled down by --fit-scale when the
+     content is taller than the bar (see Renderer.fit). */
+  --font-size-base: 40px;
+  --fit-scale: 1;
+  --font-size: calc(var(--font-size-base) * var(--fit-scale));
   --font-family: "Segoe UI", system-ui, sans-serif;
   --font-weight: 700;
 }

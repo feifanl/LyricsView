@@ -33,8 +33,59 @@ export class Renderer {
   private annVersion = 0;
   private currentWrapper: HTMLElement | null = null;
   private showTranslation = false;
+  private fitQueued = false;
 
-  constructor(private readonly container: HTMLElement) {}
+  constructor(private readonly container: HTMLElement) {
+    // Refit when the window/bar is resized (e.g. dock height changed).
+    const root = container.parentElement;
+    if (root && typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(() => this.scheduleFit()).observe(root);
+    }
+  }
+
+  /** Coalesce fit passes to one per frame (measuring forces layout). */
+  private scheduleFit(): void {
+    if (this.fitQueued) return;
+    this.fitQueued = true;
+    requestAnimationFrame(() => {
+      this.fitQueued = false;
+      this.fit();
+    });
+  }
+
+  /** Shrink the font (and everything derived from it) until the content fits the
+   *  bar, so a small bar height or big font never clips text or the box edges.
+   *  --fit-scale multiplies --font-size-base; box padding is fixed, so refine a
+   *  few times to converge. */
+  private fit(): void {
+    const root = this.container.parentElement as HTMLElement | null;
+    if (!root) return;
+    // Fit inside the padding box, and reserve a small safety margin so the
+    // glass box's border, rounded corners and soft shadow aren't clipped by the
+    // window edge (content == window would sit flush and shave the edges).
+    const cs = getComputedStyle(root);
+    const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    const SAFETY = 6;
+    const availH = root.clientHeight - padY - SAFETY * 2;
+    const availW = root.clientWidth - padX - SAFETY * 2;
+    if (availH <= 0 || availW <= 0) return;
+
+    const rootStyle = document.documentElement.style;
+    let scale = 1;
+    rootStyle.setProperty("--fit-scale", "1");
+    for (let i = 0; i < 4; i++) {
+      const needH = this.container.scrollHeight;
+      const needW = this.container.scrollWidth;
+      const step = Math.min(
+        needH > availH ? availH / needH : 1,
+        needW > availW ? availW / needW : 1,
+      );
+      if (step >= 0.999) break;
+      scale = Math.max(0.3, scale * step);
+      rootStyle.setProperty("--fit-scale", String(scale));
+    }
+  }
 
   setLayout(layout: RenderLayout): void {
     this.layout = layout;
@@ -98,6 +149,7 @@ export class Renderer {
       wrapper.appendChild(line);
       this.container.appendChild(wrapper);
     }
+    this.scheduleFit();
   }
 
   /** Attach per-line translations (from the batched translate command). */
@@ -174,6 +226,7 @@ export class Renderer {
     block.className = "lyric-line plain-block";
     block.textContent = this.plain;
     this.container.appendChild(block);
+    this.scheduleFit();
   }
 
   private rebuildStack(idx: number): void {
@@ -199,6 +252,7 @@ export class Renderer {
 
     this.container.appendChild(wrapper);
     requestAnimationFrame(() => wrapper.classList.add("mounted"));
+    this.scheduleFit();
 
     const old = this.currentWrapper;
     if (old) {

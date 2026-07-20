@@ -7,7 +7,7 @@ export function applyPresetVars(settings: Settings): void {
   const root = document.documentElement;
   root.style.setProperty("--base-color", p.colors.base);
   root.style.setProperty("--fill-color", p.colors.fill);
-  root.style.setProperty("--font-size", `${p.font.sizePx}px`);
+  root.style.setProperty("--font-size-base", `${p.font.sizePx}px`);
   root.style.setProperty("--font-family", `"${p.font.family}", system-ui, sans-serif`);
   root.style.setProperty("--font-weight", String(p.font.weight));
   root.style.setProperty("--line-spacing", String(p.lineSpacing));
