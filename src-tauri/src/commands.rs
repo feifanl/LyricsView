@@ -163,11 +163,17 @@ pub fn set_track_offset<R: Runtime>(app: AppHandle<R>, track_key: String, offset
 }
 
 #[tauri::command]
+pub fn set_track_stretch<R: Runtime>(app: AppHandle<R>, track_key: String, stretch_ppm: i64) {
+    Cache::new(&app).set_stretch(&track_key, stretch_ppm);
+}
+
+#[tauri::command]
 pub fn get_track_meta<R: Runtime>(app: AppHandle<R>, track_key: String) -> TrackMeta {
     let entry = Cache::new(&app).load(&track_key).unwrap_or_default();
     TrackMeta {
         preferred_source: entry.preferred_source,
         offset_ms: entry.offset_ms,
+        stretch_ppm: entry.stretch_ppm,
     }
 }
 

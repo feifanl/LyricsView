@@ -5,6 +5,8 @@ export type HotkeyAction =
   | "toggleEditMode"
   | "offsetMinus"
   | "offsetPlus"
+  | "driftMinus"
+  | "driftPlus"
   | "prevLine"
   | "nextLine"
   | "reloadLyrics";
@@ -86,6 +88,8 @@ export const DEFAULT_HOTKEYS: Record<HotkeyAction, string> = {
   toggleEditMode: "Alt+Shift+E",
   offsetMinus: "Alt+Shift+[",
   offsetPlus: "Alt+Shift+]",
+  driftMinus: "Alt+Shift+,",
+  driftPlus: "Alt+Shift+.",
   prevLine: "Alt+Shift+Left",
   nextLine: "Alt+Shift+Right",
   reloadLyrics: "Alt+Shift+R",

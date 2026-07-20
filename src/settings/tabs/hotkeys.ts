@@ -10,6 +10,8 @@ const ACTIONS: { id: HotkeyAction; label: string }[] = [
   { id: "toggleEditMode", label: "Toggle edit mode" },
   { id: "offsetMinus", label: "Offset −100 ms" },
   { id: "offsetPlus", label: "Offset +100 ms" },
+  { id: "driftMinus", label: "Drift − (lyrics run slower)" },
+  { id: "driftPlus", label: "Drift + (lyrics run faster)" },
   { id: "prevLine", label: "Jump to previous line" },
   { id: "nextLine", label: "Jump to next line" },
   { id: "reloadLyrics", label: "Reload lyrics" },

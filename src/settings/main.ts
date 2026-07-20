@@ -58,8 +58,10 @@ async function boot(): Promise<void> {
   function renderNav(): void {
     const brand = document.createElement("div");
     brand.className = "brand";
+    const mark = Object.assign(document.createElement("span"), { className: "brand-mark" });
+    for (let i = 0; i < 3; i++) mark.append(document.createElement("i"));
     brand.append(
-      Object.assign(document.createElement("span"), { className: "brand-mark" }),
+      mark,
       Object.assign(document.createElement("span"), { className: "brand-name", textContent: "Lyricify" }),
     );
     tabsEl.replaceChildren(

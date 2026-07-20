@@ -53,6 +53,7 @@ pub struct TrackMeta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preferred_source: Option<SourceId>,
     pub offset_ms: i64,
+    pub stretch_ppm: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]

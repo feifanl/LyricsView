@@ -29,6 +29,7 @@ let currentTrack: TrackInfo | null = null;
 let currentDoc: LyricsDoc | null = null;
 let globalOffsetMs = 0;
 let trackOffsetMs = 0;
+let trackStretchPpm = 0; // per-track drift correction (parts-per-million)
 let trackKey: string | null = null;
 let toastTimer = 0;
 let showTranslation = false; // Original vs Translated view
@@ -42,6 +43,15 @@ let loadSeq = 0;
 
 function applyOffsets(): void {
   clock.setUserOffset(globalOffsetMs + trackOffsetMs);
+}
+
+// Playback-position → lyric-time mapping. Drift correction rescales position so
+// a lyric timeline from a different release can be linearly aligned to the
+// audio: lyricTime = rate*audio + offset. rate == 1 (ppm 0) is a no-op.
+function estimatePos(now: number): number {
+  const rate = 1 + trackStretchPpm / 1_000_000;
+  const offset = globalOffsetMs + trackOffsetMs;
+  return rate * clock.estimate(now) + offset * (1 - rate);
 }
 
 function setFaded(faded: boolean): void {
@@ -67,7 +77,7 @@ function onPlayingChanged(playing: boolean): void {
 /** Current line text + translation, for the share card. */
 function currentLineInfo(): { text: string; translation?: string } | null {
   if (!currentDoc || currentDoc.lines.length === 0) return null;
-  const pos = clock.estimate(Date.now());
+  const pos = estimatePos(Date.now());
   let idx = 0;
   for (let i = 0; i < currentDoc.lines.length; i++) {
     if (currentDoc.lines[i]!.start <= pos) idx = i;
@@ -111,15 +121,15 @@ function applyLayout(settings: Settings): void {
 }
 
 function frame(): void {
-  if (hasDoc) renderer.render(clock.estimate(Date.now()));
+  if (hasDoc) renderer.render(estimatePos(Date.now()));
   requestAnimationFrame(frame);
 }
 
 function toast(text: string): void {
   toastEl.textContent = text;
-  toastEl.hidden = false;
+  toastEl.classList.add("show");
   window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => (toastEl.hidden = true), 1400);
+  toastTimer = window.setTimeout(() => toastEl.classList.remove("show"), 1400);
 }
 
 // Status (searching / no lyrics / waiting) renders inside the glass box.
@@ -132,8 +142,10 @@ async function loadTrackMeta(): Promise<void> {
     trackKey = await cmd.currentTrackKey();
     const meta = trackKey ? await cmd.getTrackMeta(trackKey) : null;
     trackOffsetMs = meta?.offsetMs ?? 0;
+    trackStretchPpm = meta?.stretchPpm ?? 0;
   } catch {
     trackOffsetMs = 0;
+    trackStretchPpm = 0;
   }
   applyOffsets();
 }
@@ -195,9 +207,22 @@ function nudgeOffset(deltaMs: number): void {
   toast(`offset ${trackOffsetMs >= 0 ? "+" : ""}${trackOffsetMs} ms`);
 }
 
+const DRIFT_STEP_PPM = 500; // ~0.05% per press ≈ 90 ms over a 3-min song
+
+async function persistStretch(): Promise<void> {
+  if (trackKey) await cmd.setTrackStretch(trackKey, trackStretchPpm);
+}
+
+function nudgeDrift(deltaPpm: number): void {
+  trackStretchPpm += deltaPpm;
+  void persistStretch();
+  const pct = (trackStretchPpm / 10_000).toFixed(2); // 10 000 ppm = 1%
+  toast(`drift ${trackStretchPpm >= 0 ? "+" : ""}${pct}%`);
+}
+
 function jumpLine(dir: -1 | 1): void {
   if (!currentDoc || currentDoc.lines.length === 0) return;
-  const pos = clock.estimate(Date.now());
+  const pos = estimatePos(Date.now());
   let idx = 0;
   for (let i = 0; i < currentDoc.lines.length; i++) {
     if (currentDoc.lines[i]!.start <= pos) idx = i;
@@ -219,6 +244,12 @@ function handleHotkey(action: HotkeyAction): void {
       break;
     case "offsetPlus":
       nudgeOffset(100);
+      break;
+    case "driftMinus":
+      nudgeDrift(-DRIFT_STEP_PPM);
+      break;
+    case "driftPlus":
+      nudgeDrift(DRIFT_STEP_PPM);
       break;
     case "prevLine":
       jumpLine(-1);

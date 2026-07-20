@@ -25,6 +25,10 @@ pub struct CacheEntry {
     pub preferred_source: Option<SourceId>,
     #[serde(default)]
     pub offset_ms: i64,
+    /// Per-track drift correction in parts-per-million of playback position
+    /// (0 = none). Corrects lyric timelines from a different release/version.
+    #[serde(default)]
+    pub stretch_ppm: i64,
     /// Translation cache keyed by target language.
     #[serde(default)]
     pub translations: HashMap<String, Vec<String>>,
@@ -119,6 +123,12 @@ impl<'a, R: Runtime> Cache<'a, R> {
     pub fn set_offset(&self, key: &str, offset_ms: i64) {
         let mut entry = self.load_or_new(key);
         entry.offset_ms = offset_ms;
+        let _ = self.save(&entry);
+    }
+
+    pub fn set_stretch(&self, key: &str, stretch_ppm: i64) {
+        let mut entry = self.load_or_new(key);
+        entry.stretch_ppm = stretch_ppm;
         let _ = self.save(&entry);
     }
 

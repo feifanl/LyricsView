@@ -35,6 +35,9 @@ export const cmd = {
   setTrackOffset(trackKey: string, offsetMs: number): Promise<void> {
     return invoke("set_track_offset", { trackKey, offsetMs });
   },
+  setTrackStretch(trackKey: string, stretchPpm: number): Promise<void> {
+    return invoke("set_track_stretch", { trackKey, stretchPpm });
+  },
   getTrackMeta(trackKey: string): Promise<TrackMeta> {
     return invoke("get_track_meta", { trackKey });
   },

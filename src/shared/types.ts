@@ -57,6 +57,8 @@ export interface LyricsDoc {
 export interface TrackMeta {
   preferredSource?: SourceId;
   offsetMs: number;
+  /** Per-track drift correction, parts-per-million of position (0 = none). */
+  stretchPpm: number;
 }
 
 export interface CacheInfo {

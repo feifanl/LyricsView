@@ -102,6 +102,16 @@ body.faded .overlay-root {
   font-weight: 500;
   color: var(--base-color);
   opacity: 0.7;
+  animation: status-breathe 2.6s ease-in-out infinite;
+}
+@keyframes status-breathe {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .romaji-line {
@@ -138,14 +148,20 @@ ruby rt {
   overflow-y: auto;
   white-space: pre-wrap;
   text-align: center;
+  scrollbar-width: none;
+}
+.plain-block::-webkit-scrollbar {
+  display: none;
 }
 
 .lyric-word {
   display: inline-block;
+  /* Feathered sweep: 4%-wide soft edge between fill and base. The 104%/−4%
+     overshoot keeps the word fully base at p=0 and fully filled at p=1. */
   background-image: linear-gradient(
     90deg,
-    var(--fill-color) calc(var(--p, 0) * 100%),
-    var(--base-color) calc(var(--p, 0) * 100%)
+    var(--fill-color) calc(var(--p, 0) * 104% - 4%),
+    var(--base-color) calc(var(--p, 0) * 104%)
   );
   -webkit-background-clip: text;
   background-clip: text;
@@ -167,10 +183,21 @@ ruby rt {
   .lyric-word.active {
     transform: none;
   }
+  .status-line {
+    animation: none;
+  }
 }
 
+/* Layered: a tight contact shadow for edge definition + a wide soft one for
+   legibility over busy backgrounds. */
 .text-shadow .lyric-line {
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6), 0 0 1px rgba(0, 0, 0, 0.5);
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.55),
+    0 2px 14px rgba(0, 0, 0, 0.45);
+}
+.text-shadow .romaji-line,
+.text-shadow .trans-line {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 10px rgba(0, 0, 0, 0.4);
 }
 
 .outline .lyric-word,
@@ -235,51 +262,81 @@ body.dock-top .lyrics.bg-glass {
 body.dock-bottom .lyrics.bg-glass {
   border-bottom: none;
 }
+/* Soft shadow toward the desktop so the bar reads as a layer, not a stripe. */
+body.dock-top .lyrics.bg-solid,
+body.dock-top .lyrics.bg-glass {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+}
+body.dock-bottom .lyrics.bg-solid,
+body.dock-bottom .lyrics.bg-glass {
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
 
 .toast {
   position: absolute;
   top: 10px;
   padding: 6px 14px;
   border-radius: 999px;
-  background: rgba(20, 20, 25, 0.85);
+  background: rgba(16, 18, 24, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(16px) saturate(1.5);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
   color: #fff;
   font-size: 14px;
   font-family: var(--font-family);
-  transition: opacity 200ms ease;
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .edit-chrome {
   position: absolute;
   inset: 0;
-  border: 2px dashed rgba(120, 190, 255, 0.8);
-  border-radius: 10px;
+  border: 1.5px dashed rgba(120, 190, 255, 0.85);
+  border-radius: 12px;
   box-sizing: border-box;
   pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(120, 190, 255, 0.12), inset 0 0 28px rgba(120, 190, 255, 0.08);
 }
 .edit-hint {
   position: absolute;
-  top: 6px;
-  left: 8px;
+  top: 8px;
+  left: 10px;
   font-size: 12px;
-  color: rgba(200, 225, 255, 0.9);
-  background: rgba(0, 0, 0, 0.5);
-  padding: 2px 8px;
-  border-radius: 6px;
+  color: rgba(210, 232, 255, 0.95);
+  background: rgba(10, 14, 20, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 3px 10px;
+  border-radius: 999px;
   font-family: var(--font-family);
 }
 .edit-done {
   position: absolute;
-  top: 6px;
-  right: 8px;
+  top: 8px;
+  right: 10px;
   pointer-events: auto;
   cursor: pointer;
-  border: none;
-  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
   width: 28px;
   height: 28px;
-  font-size: 16px;
+  font-size: 15px;
   color: #fff;
   background: rgba(60, 160, 90, 0.9);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  transition: background 120ms ease, transform 120ms ease;
+}
+.edit-done:hover {
+  background: rgba(72, 182, 106, 0.95);
+  transform: scale(1.06);
 }
 
 .overlay-root.editing {
@@ -299,6 +356,16 @@ body.dock-bottom .lyrics.bg-glass {
 .grip-nw { top: -3px; left: -3px; width: 12px; height: 12px; cursor: nwse-resize; }
 .grip-se { bottom: -3px; right: -3px; width: 12px; height: 12px; cursor: nwse-resize; }
 .grip-sw { bottom: -3px; left: -3px; width: 12px; height: 12px; cursor: nesw-resize; }
+/* Visible corner handles while editing — the edge grips stay invisible. */
+.edit-chrome .grip-ne,
+.edit-chrome .grip-nw,
+.edit-chrome .grip-se,
+.edit-chrome .grip-sw {
+  background: rgba(120, 190, 255, 0.95);
+  border: 1.5px solid rgba(10, 20, 30, 0.6);
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
 
 [hidden] {
   display: none !important;

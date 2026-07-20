@@ -69,6 +69,7 @@ pub fn run() {
             commands::save_manual_lyrics,
             commands::set_preferred_source,
             commands::set_track_offset,
+            commands::set_track_stretch,
             commands::get_track_meta,
             commands::get_cache_info,
             commands::clear_cache,
