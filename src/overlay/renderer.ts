@@ -22,6 +22,15 @@ export interface RenderLayout {
 
 const NO_ROMANIZATION: RomanizationCfg = { auto: false, ja: false, jaFurigana: false, zh: false, ko: false, ru: false };
 
+/** Split a provider translation that leads with a bracketed transliteration
+ *  ("【romaji】 english" or "[romaji] english") into the two parts. Returns the
+ *  whole string as `text` when there's no such prefix (or no trailing text). */
+function splitTranslation(t: string): { roman?: string; text: string } {
+  const m = t.match(/^\s*[【[]([^】\]]+)[】\]]\s*(.+)$/s);
+  if (m && m[2]!.trim()) return { roman: m[1]!.trim(), text: m[2]!.trim() };
+  return { text: t };
+}
+
 export class Renderer {
   private prepared: PreparedLine[] = [];
   private plain: string | null = null;
@@ -247,7 +256,14 @@ export class Renderer {
       this.buildLine(el, p, i === idx);
       wrapper.appendChild(el);
       if (p.romaji) this.appendSubLine(wrapper, p.romaji, "romaji-line", i === idx);
-      if (p.translation && this.showTranslation) this.appendSubLine(wrapper, p.translation, "trans-line", i === idx);
+      if (p.translation && this.showTranslation) {
+        // Some providers bake a transliteration into the translation as
+        // "【romaji】 english"; show each on its own line. Skip the bracketed
+        // romaji if we already produced our own romanization above.
+        const { roman, text } = splitTranslation(p.translation);
+        if (roman && !p.romaji) this.appendSubLine(wrapper, roman, "romaji-line", i === idx);
+        this.appendSubLine(wrapper, text, "trans-line", i === idx);
+      }
     }
 
     this.container.appendChild(wrapper);
