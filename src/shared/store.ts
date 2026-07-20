@@ -24,18 +24,46 @@ export async function saveSettings(settings: Settings): Promise<void> {
   await store.save();
 }
 
+/** Fill any preset fields added since the file was written, without discarding
+ *  user edits. Built-in presets keep their template as the fallback; unknown
+ *  (user-created) presets fall back to the default Glass Bar shape. */
+function mergePresets(
+  base: Settings["presets"],
+  raw: Settings["presets"] | undefined,
+): Settings["presets"] {
+  if (!raw) return base;
+  const fallback = base["Glass Bar"] ?? Object.values(base)[0]!;
+  const out: Settings["presets"] = { ...base };
+  for (const [name, p] of Object.entries(raw)) {
+    const template = base[name] ?? fallback;
+    out[name] = {
+      ...template,
+      ...p,
+      font: { ...template.font, ...p.font },
+      colors: { ...template.colors, ...p.colors },
+      contextLines: { ...template.contextLines, ...p.contextLines },
+      size: { ...template.size, ...p.size },
+    };
+  }
+  return out;
+}
+
 function mergeDefaults(raw: Partial<Settings> | undefined): Settings {
   const base = defaultSettings();
   if (!raw) return base;
-  // One-time migration: when the schema version changes, refresh the built-in
-  // presets and active preset (keeps functional config like keys/tokens).
+  // A schema bump only fills in newly added fields — it must never discard the
+  // user's presets, colors, keys or layout, or settings would appear to reset
+  // ("not persisting") after every update.
   const migrate = raw.schemaVersion !== base.schemaVersion;
+  const presets = mergePresets(base.presets, raw.presets);
+  const activePreset =
+    raw.activePreset && presets[raw.activePreset] ? raw.activePreset : base.activePreset;
   return {
     ...base,
     ...raw,
     schemaVersion: base.schemaVersion,
-    presets: migrate ? base.presets : (raw.presets ?? base.presets),
-    activePreset: migrate ? base.activePreset : (raw.activePreset ?? base.activePreset),
+    presets,
+    activePreset,
     providersEnabled: { ...base.providersEnabled, ...raw.providersEnabled },
     appleMusic: { ...base.appleMusic, ...raw.appleMusic },
     // On migration, adopt the new default for `show` (translate by default)
