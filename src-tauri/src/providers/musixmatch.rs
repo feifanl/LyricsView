@@ -85,7 +85,7 @@ impl Musixmatch {
         http: &Client,
         token: &str,
         track: &TrackInfo,
-    ) -> Option<(i64, bool, Option<String>, String)> {
+    ) -> Option<(i64, bool, Option<String>, String, Option<String>)> {
         let dur = (track.duration_ms / 1000).to_string();
         let v = get_json(
             http,
@@ -117,6 +117,14 @@ impl Musixmatch {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
+        // Track's own lyrics language (ISO code). Used to skip crowd
+        // translations into a language the song is already written in.
+        let language = track_obj
+            .get("track_lyrics_language")
+            .or_else(|| track_obj.get("language"))
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_ascii_lowercase());
 
         let lrc = dig(
             calls,
@@ -132,7 +140,7 @@ impl Musixmatch {
         .and_then(Value::as_str)
         .map(str::to_string);
 
-        Some((track_id, has_richsync, lrc, track_name))
+        Some((track_id, has_richsync, lrc, track_name, language))
     }
 
     async fn richsync(&self, http: &Client, token: &str, track_id: i64) -> Option<String> {
@@ -193,10 +201,24 @@ impl Musixmatch {
     }
 
     /// Enrich a doc with crowd translations, matching by original line text.
-    async fn enrich_translations(&self, http: &Client, token: &str, track_id: i64, doc: &mut LyricsDoc) {
+    /// `track_lang` is the song's own lyrics language: when it matches the
+    /// target, the lyrics are already in the wanted language, so we skip the
+    /// lookup (the crowd endpoint otherwise returns stray other-language
+    /// submissions, e.g. a Filipino "translation" on an English song).
+    async fn enrich_translations(
+        &self,
+        http: &Client,
+        token: &str,
+        track_id: i64,
+        doc: &mut LyricsDoc,
+        track_lang: Option<&str>,
+    ) {
         let Some(lang) = &self.translate_to else {
             return;
         };
+        if track_lang.is_some_and(|tl| tl.eq_ignore_ascii_case(lang)) {
+            return;
+        }
         if doc.lines.is_empty() {
             return;
         }
@@ -220,7 +242,7 @@ impl Provider for Musixmatch {
     async fn fetch(&self, http: &Client, track: &TrackInfo) -> Option<LyricsDoc> {
         let key = crate::normalize::track_key(track);
         let token = self.user_token(http).await?;
-        let (track_id, has_richsync, lrc, track_name) =
+        let (track_id, has_richsync, lrc, track_name, language) =
             self.macro_subtitles(http, &token, track).await?;
 
         // Guard against a wildly wrong server match.
@@ -241,7 +263,8 @@ impl Provider for Musixmatch {
         let mut doc = doc?;
         // Keyless crowd translations (e.g. zh -> en) attached per line when the
         // user shows translations; AI stays a later fallback for missing lines.
-        self.enrich_translations(http, &token, track_id, &mut doc).await;
+        self.enrich_translations(http, &token, track_id, &mut doc, language.as_deref())
+            .await;
         Some(doc)
     }
 
@@ -296,7 +319,8 @@ impl Provider for Musixmatch {
             doc = parse_lrc(lrc, SourceId::Musixmatch, &key).ok();
         }
         let mut doc = doc?;
-        self.enrich_translations(http, &token, track_id, &mut doc).await;
+        self.enrich_translations(http, &token, track_id, &mut doc, None)
+            .await;
         Some(doc)
     }
 }

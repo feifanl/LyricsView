@@ -43,13 +43,23 @@ pub async fn fetch_best<R: Runtime>(app: &AppHandle<R>, track: &TrackInfo) -> Op
         if doc.has_word_timing {
             return Some(doc); // word-level always wins
         }
-        if base.is_none() {
+        // Rank what we keep: timed lines beat a plain (unsynced) fallback. Without
+        // this an early provider that only has plain text permanently shadows a
+        // properly synced doc from a later one, and the overlay ends up dumping
+        // the whole song instead of following along.
+        let upgrade = match &base {
+            None => true,
+            Some(b) => b.lines.is_empty() && !doc.lines.is_empty(),
+        };
+        if upgrade {
             base = Some(doc);
         }
-        if !cfg.prefer_word_level {
-            return base; // first line-level hit is good enough
+        // A synced hit is good enough unless we're still hunting word timing; a
+        // plain-only hit never is, so keep scanning for something timed.
+        let have_synced = base.as_ref().is_some_and(|b| !b.lines.is_empty());
+        if !cfg.prefer_word_level && have_synced {
+            return base;
         }
-        // else keep scanning later providers for word timing
     }
     base
 }
