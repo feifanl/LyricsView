@@ -23,6 +23,20 @@ export interface RomanizationCfg {
   ru: boolean;
 }
 
+/** Any romanization at all — `auto` plus the per-script overrides. */
+export function romanizationOn(cfg: RomanizationCfg): boolean {
+  return cfg.auto || cfg.ja || cfg.zh || cfg.ko || cfg.ru;
+}
+
+export const ROMANIZATION_OFF: RomanizationCfg = {
+  auto: false,
+  ja: false,
+  jaFurigana: false,
+  zh: false,
+  ko: false,
+  ru: false,
+};
+
 export type BackgroundStyle = "none" | "glass" | "solid";
 // Highlight modes: none = flat line, fill = progressive karaoke sweep,
 // spotlight = pop the single word being sung. (fade = legacy whole-line.)

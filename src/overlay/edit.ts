@@ -4,6 +4,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { cmd } from "../shared/ipc";
+import { pauseAutoWidth } from "./autowidth";
 import { activePreset } from "../shared/settings";
 import { loadSettings, saveSettings } from "../shared/store";
 import { captureGeometry } from "./geometry";
@@ -40,6 +41,9 @@ export function initEditMode(): void {
     editing = on;
     chrome.hidden = !on;
     root.classList.toggle("editing", on);
+    // Hands the preset width back before the user drags, so the size they see
+    // (and the one persisted below) isn't an auto-widened one.
+    await pauseAutoWidth(on);
     if (!on) await persistGeometry();
   }
 

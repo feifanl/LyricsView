@@ -124,6 +124,4 @@ export async function annotate(text: string, cfg: RomanizationCfg): Promise<Anno
   }
 }
 
-export function romanizationActive(cfg: RomanizationCfg): boolean {
-  return cfg.auto || cfg.ja || cfg.zh || cfg.ko || cfg.ru;
-}
+export { romanizationOn as romanizationActive } from "../shared/settings";

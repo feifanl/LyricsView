@@ -8,6 +8,10 @@
   --font-size-base: 40px;
   --fit-scale: 1;
   --font-size: calc(var(--font-size-base) * var(--fit-scale));
+  /* Fixed share of the lyric size. Deliberately not fitted per line: sizing the
+     columns to each line made them resize on every line change. Long ones clip
+     instead (see .sub-row). */
+  --sub-font-size: calc(var(--font-size) * 0.72);
   --font-family: "Segoe UI", system-ui, sans-serif;
   --font-weight: 700;
 }
@@ -49,7 +53,9 @@ body.faded .overlay-root {
   display: grid;
   grid-template-areas: "stack";
   place-items: center;
-  max-width: 92%;
+  /* Full window width: .overlay-root's padding is what insets the box, and the
+     auto-width pass below assumes box width tracks window width 1:1. */
+  max-width: 100%;
   text-align: center;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -121,13 +127,52 @@ body.faded .overlay-root {
   }
 }
 
+/* Original + romaji + translation sit side by side on one row: extra rows make
+   the auto-fit shrink the font, while extra columns only widen the box. */
+.sub-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: calc(var(--font-size) * 0.4);
+  min-width: 0;
+}
+/* With columns beside it, nothing may wrap: a squeezed lyric would fold onto a
+   second row, and the fit would then pay for that height by shrinking the font
+   instead of narrowing the columns. */
+.sub-row.has-sides {
+  max-width: var(--row-max, 100%);
+}
+.sub-row.has-sides > * {
+  white-space: pre;
+}
+/* The lyric holds its size; the columns give up width and finally clip, so a
+   long romaji/translation never costs the lyric any font size. */
+.sub-row.has-sides > .lyric-line {
+  flex: 0 0 auto;
+}
+.sub-row.has-sides > .romaji-line,
+.sub-row.has-sides > .trans-line,
+.sub-row.has-sides > .missing-line {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Hidden while the renderer measures the base font size (see Renderer.fit). */
+.lyrics.measuring .romaji-line,
+.lyrics.measuring .trans-line,
+.lyrics.measuring .missing-line {
+  display: none;
+}
+
 .romaji-line {
-  font-size: calc(var(--font-size) * 0.5);
+  font-size: var(--sub-font-size);
   color: var(--base-color);
   opacity: 0.75;
-  text-align: center;
-  line-height: 1.1;
-  margin-top: -2px;
+  text-align: right;
+  line-height: 1.15;
 }
 .romaji-line.context {
   opacity: 0.35;
@@ -138,15 +183,26 @@ ruby rt {
 }
 
 .trans-line {
-  font-size: calc(var(--font-size) * 0.55);
+  font-size: var(--sub-font-size);
   color: var(--base-color);
   opacity: 0.8;
-  text-align: center;
+  text-align: left;
   line-height: 1.15;
   font-style: italic;
 }
 .trans-line.context {
   opacity: 0.35;
+}
+
+/* "no romaji/translation found" — quieter and smaller than a real sub-line. */
+.missing-line {
+  font-size: calc(var(--sub-font-size) * 0.45);
+  white-space: nowrap;
+  color: var(--base-color);
+  opacity: 0.45;
+  text-align: center;
+  line-height: 1.1;
+  font-style: italic;
 }
 
 .plain-block {
@@ -203,7 +259,8 @@ ruby rt {
     0 2px 14px rgba(0, 0, 0, 0.45);
 }
 .text-shadow .romaji-line,
-.text-shadow .trans-line {
+.text-shadow .trans-line,
+.text-shadow .missing-line {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 10px rgba(0, 0, 0, 0.4);
 }
 
@@ -218,7 +275,7 @@ ruby rt {
   border-radius: 26px;
   padding: 16px 40px;
   width: auto;
-  max-width: 94%;
+  max-width: 100%;
 }
 .lyrics.bg-solid {
   background: var(--bg-color, #14141aE6);

@@ -2,6 +2,7 @@
 // type, placement and highlight style, with the overlay updating in real time.
 import { cmd } from "../../shared/ipc";
 import type { AnimationStyle, BackgroundStyle, ContextCount, DockMode, Preset } from "../../shared/settings";
+import { ROMANIZATION_OFF, romanizationOn } from "../../shared/settings";
 import { LyricPreview } from "../preview";
 import type { SettingsCtx, Tab } from "../tab";
 import { button, card, checkbox, colorInput, el, field, numberInput, range, segmented, select } from "../ui";
@@ -151,14 +152,25 @@ function render(ctx: SettingsCtx): HTMLElement {
 
   grid.append(
     card("Lyrics language", [
-      el("p", { className: "card-note", textContent: "Prefers built-in translations; AI fills the rest when set up in Language." }),
-      segmented<"original" | "translated">(
-        [
-          { value: "original", label: "Original" },
-          { value: "translated", label: "Translated" },
-        ],
-        s.translation.show ? "translated" : "original",
-        (v) => void ctx.patch((n) => (n.translation.show = v === "translated")),
+      el("p", {
+        className: "card-note",
+        textContent:
+          "Shown beside the lyric: romaji on the left, translation on the right. Prefers built-in translations; AI fills the rest when set up in Language.",
+      }),
+      field(
+        "Show romaji",
+        checkbox(romanizationOn(s.romanization), (v) =>
+          void ctx.patch((n) => {
+            // Off clears the per-script overrides too, otherwise an advanced
+            // override from the Language tab would keep romaji on screen.
+            n.romanization = v ? { ...n.romanization, auto: true } : { ...ROMANIZATION_OFF };
+          }),
+        ),
+        "Romanized reading for non-Latin lyrics (Japanese, Chinese, Korean, Russian).",
+      ),
+      field(
+        "Show translation",
+        checkbox(s.translation.show, (v) => void ctx.patch((n) => (n.translation.show = v))),
       ),
     ]),
   );

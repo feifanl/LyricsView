@@ -12,7 +12,7 @@ function render(ctx: SettingsCtx): HTMLElement {
     el("div", {
       className: "hint",
       textContent:
-        "For lyrics in a non-Latin alphabet (Japanese, Chinese, Korean, Russian), shows a romanized sub-line under each line. Script is auto-detected; applied live.",
+        "For lyrics in a non-Latin alphabet (Japanese, Chinese, Korean, Russian), shows the romanized reading beside each line. Script is auto-detected; applied live.",
     }),
     field(
       "Show romanization",
@@ -43,7 +43,7 @@ function render(ctx: SettingsCtx): HTMLElement {
     el("div", {
       className: "hint",
       textContent:
-        "Turn on Translated in the Overlay tab to show translations. Built-in provider translations are used first; AI only fills lines without one.",
+        "Turn on Show translation in the Overlay tab to show translations. Built-in provider translations are used first; AI only fills lines without one.",
     }),
     el("div", {
       className: "notice warn",

@@ -13,6 +13,7 @@ import {
 } from "../shared/ipc";
 import type { LyricsDoc, TrackInfo } from "../shared/types";
 import { applyPresetVars } from "./apply";
+import { configureAutoWidth, requestWidth } from "./autowidth";
 import { PlaybackClock } from "./clock";
 import { initEditMode } from "./edit";
 import { restoreGeometry } from "./geometry";
@@ -283,7 +284,8 @@ async function boot(): Promise<void> {
   applyPresetVars(settings);
   applyLayout(settings);
   initEditMode();
-  void restoreGeometry(activePreset(settings));
+  renderer.onFit = requestWidth;
+  void restoreGeometry(activePreset(settings)).then(() => configureAutoWidth(settings));
 
   document.getElementById("overlay-root")?.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -329,7 +331,7 @@ async function boot(): Promise<void> {
     applyPresetVars(s);
     applyLayout(s);
     // Re-dock / re-place live when the preset or dock mode changes.
-    void restoreGeometry(activePreset(s));
+    void restoreGeometry(activePreset(s)).then(() => configureAutoWidth(s));
     if (showTranslation && currentDoc) void maybeTranslate(currentDoc);
   });
 

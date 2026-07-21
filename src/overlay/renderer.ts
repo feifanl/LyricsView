@@ -44,6 +44,11 @@ export class Renderer {
   private showTranslation = false;
   private fitQueued = false;
 
+  /** Reports, after every fit, how wide the current row wants to be and how much
+   *  width it was given (CSS px). Lets the host widen the overlay window instead
+   *  of letting the columns clip. `wants` is 0 when there are no side columns. */
+  onFit?: (wants: number, avail: number) => void;
+
   constructor(private readonly container: HTMLElement) {
     // Refit when the window/bar is resized (e.g. dock height changed).
     const root = container.parentElement;
@@ -52,7 +57,9 @@ export class Renderer {
     }
   }
 
-  /** Coalesce fit passes to one per frame (measuring forces layout). */
+  /** Coalesce fit passes to one per frame (measuring forces layout). Only for
+   *  external triggers like resizes — a rebuilt stack fits synchronously, so it
+   *  never gets painted once at the previous line's scale. */
   private scheduleFit(): void {
     if (this.fitQueued) return;
     this.fitQueued = true;
@@ -62,10 +69,26 @@ export class Renderer {
     });
   }
 
+  /** Start the crossfade of an outgoing stack, pinned to the font sizes it was
+   *  laid out with. The sizes live on :root, so refitting for the incoming line
+   *  would otherwise resize the fading line under it — which reads as the text
+   *  flashing between two sizes. */
+  private fadeOut(stack: HTMLElement): void {
+    const cs = getComputedStyle(document.documentElement);
+    stack.style.setProperty("--font-size", cs.getPropertyValue("--font-size"));
+    stack.style.setProperty("--row-max", cs.getPropertyValue("--row-max"));
+    stack.classList.add("leaving");
+    window.setTimeout(() => stack.remove(), 200);
+  }
+
   /** Shrink the font (and everything derived from it) until the content fits the
    *  bar, so a small bar height or big font never clips text or the box edges.
    *  --fit-scale multiplies --font-size-base; box padding is fixed, so refine a
-   *  few times to converge. */
+   *  few times to converge.
+   *
+   *  Only the lyric line is fitted. The romaji/translation columns keep a fixed
+   *  share of its size and clip their tail when there's no room: sizing them per
+   *  line made them change size on every line change, which reads as flashing. */
   private fit(): void {
     const root = this.container.parentElement as HTMLElement | null;
     if (!root) return;
@@ -76,24 +99,79 @@ export class Renderer {
     const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
     const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
     const SAFETY = 6;
-    const availH = root.clientHeight - padY - SAFETY * 2;
-    const availW = root.clientWidth - padX - SAFETY * 2;
+    // The glass box's own padding/border and max-width cap eat into the space
+    // the text may use; without this the row happily overflows the box.
+    const bs = getComputedStyle(this.container);
+    const boxY =
+      parseFloat(bs.paddingTop) + parseFloat(bs.paddingBottom) + parseFloat(bs.borderTopWidth) + parseFloat(bs.borderBottomWidth);
+    const boxX =
+      parseFloat(bs.paddingLeft) + parseFloat(bs.paddingRight) + parseFloat(bs.borderLeftWidth) + parseFloat(bs.borderRightWidth);
+    let capW = root.clientWidth - padX;
+    if (bs.maxWidth.endsWith("%")) capW *= parseFloat(bs.maxWidth) / 100;
+    else if (bs.maxWidth.endsWith("px")) capW = Math.min(capW, parseFloat(bs.maxWidth));
+    const availH = root.clientHeight - padY - boxY - SAFETY * 2;
+    const availW = capW - boxX - SAFETY * 2;
     if (availH <= 0 || availW <= 0) return;
 
     const rootStyle = document.documentElement.style;
-    let scale = 1;
     rootStyle.setProperty("--fit-scale", "1");
+    // Clamp the row to exactly what the fit budgets, so the columns clip at the
+    // width the measurements assume instead of spilling past the box.
+    rootStyle.setProperty("--row-max", `${availW}px`);
+
+    // Measured with the side columns hidden: they never cost the lyric any size,
+    // so the lyric is fitted exactly as if it were alone in the box.
+    this.container.classList.add("measuring");
+    this.shrinkToFit(1, availW, availH, rootStyle);
+    this.container.classList.remove("measuring");
+
+    this.onFit?.(this.rowNaturalWidth(), availW);
+  }
+
+  /** Width the current row wants before any clipping, or 0 when it has no side
+   *  columns. They're clamped by the row's max-width, so their rects report the
+   *  clipped width — scrollWidth is what they'd actually like to be. */
+  private rowNaturalWidth(): number {
+    const row = this.container.querySelector<HTMLElement>(".stack:not(.leaving) .sub-row.has-sides");
+    if (!row) return 0;
+    const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+    let w = 0;
+    for (const child of row.children) w += Math.max(child.scrollWidth, child.getBoundingClientRect().width);
+    return w + gap * Math.max(0, row.children.length - 1);
+  }
+
+  /** Height of the tallest live stack. Measured from the element, not the
+   *  container's scroll size: the box centers its content, so overflow spills
+   *  out both sides and scrollHeight/Width under-report it. */
+  private stackHeight(): number {
+    let h = 0;
+    for (const stack of this.container.querySelectorAll<HTMLElement>(".stack")) {
+      if (stack.classList.contains("leaving")) continue;
+      h = Math.max(h, stack.getBoundingClientRect().height);
+    }
+    return h;
+  }
+
+  /** Rendered width of the widest lyric line, ignoring the side columns. The
+   *  lyric never shrinks in the flex row, so this is its natural width. */
+  private lineWidth(): number {
+    let w = 0;
+    for (const el of this.container.querySelectorAll<HTMLElement>(".stack:not(.leaving) .lyric-line")) {
+      w = Math.max(w, el.getBoundingClientRect().width);
+    }
+    return w;
+  }
+
+  private shrinkToFit(scale: number, availW: number, availH: number, rootStyle: CSSStyleDeclaration): number {
     for (let i = 0; i < 4; i++) {
-      const needH = this.container.scrollHeight;
-      const needW = this.container.scrollWidth;
-      const step = Math.min(
-        needH > availH ? availH / needH : 1,
-        needW > availW ? availW / needW : 1,
-      );
+      const needH = this.stackHeight();
+      const needW = this.lineWidth();
+      const step = Math.min(needH > availH ? availH / needH : 1, needW > availW ? availW / needW : 1);
       if (step >= 0.999) break;
       scale = Math.max(0.3, scale * step);
       rootStyle.setProperty("--fit-scale", String(scale));
     }
+    return scale;
   }
 
   setLayout(layout: RenderLayout): void {
@@ -157,8 +235,9 @@ export class Renderer {
       line.textContent = text;
       wrapper.appendChild(line);
       this.container.appendChild(wrapper);
+      this.currentWrapper = wrapper;
     }
-    this.scheduleFit();
+    this.fit();
   }
 
   /** Attach per-line translations (from the batched translate command). */
@@ -221,11 +300,7 @@ export class Renderer {
   private clearStack(): void {
     this.wordSpans = [];
     this.prevActive = -1;
-    const old = this.currentWrapper;
-    if (old) {
-      old.classList.add("leaving");
-      window.setTimeout(() => old.remove(), 200);
-    }
+    if (this.currentWrapper) this.fadeOut(this.currentWrapper);
     this.currentWrapper = null;
   }
 
@@ -242,7 +317,7 @@ export class Renderer {
     wrapper.appendChild(line);
     this.container.appendChild(wrapper);
     this.currentWrapper = wrapper;
-    this.scheduleFit();
+    this.fit();
   }
 
   private rebuildStack(idx: number): void {
@@ -268,38 +343,62 @@ export class Renderer {
       const el = document.createElement("div");
       el.className = i === idx ? "lyric-line current" : "lyric-line context";
       this.buildLine(el, p, i === idx);
-      wrapper.appendChild(el);
-      // Sub-lines (romaji / translation) hang off the CURRENT line only. On the
-      // faint prev/next context lines they'd triple the row count and force the
-      // auto-fit to shrink everything to an unreadable size.
-      if (i === idx) {
-        if (p.romaji) this.appendSubLine(wrapper, p.romaji, "romaji-line", true);
-        if (p.translation && this.showTranslation) {
-          // Some providers bake a transliteration into the translation as
-          // "【romaji】 english"; show each on its own line. Skip the bracketed
-          // romaji if we already produced our own romanization above.
-          const { roman, text } = splitTranslation(p.translation);
-          if (roman && !p.romaji) this.appendSubLine(wrapper, roman, "romaji-line", true);
-          this.appendSubLine(wrapper, text, "trans-line", true);
-        }
+      if (i !== idx) {
+        // Romaji/translation hang off the CURRENT line only; on the faint
+        // prev/next context lines they'd just add noise.
+        wrapper.appendChild(el);
+        continue;
       }
+      // Romaji | original | translation all share ONE row, so the stack never
+      // grows taller and the auto-fit has no reason to shrink the font.
+      const row = document.createElement("div");
+      row.className = "sub-row";
+      this.buildCurrentRow(row, p, el);
+      wrapper.appendChild(row);
     }
+
+    // Pin the outgoing stack before refitting, so the fit below only resizes the
+    // incoming one.
+    if (this.currentWrapper) this.fadeOut(this.currentWrapper);
+    this.currentWrapper = wrapper;
 
     this.container.appendChild(wrapper);
+    // Fit synchronously: at rAF the new stack would already have been painted
+    // once at the previous line's size, which is the flash.
+    this.fit();
     requestAnimationFrame(() => wrapper.classList.add("mounted"));
-    this.scheduleFit();
-
-    const old = this.currentWrapper;
-    if (old) {
-      old.classList.add("leaving");
-      window.setTimeout(() => old.remove(), 200);
-    }
-    this.currentWrapper = wrapper;
   }
 
-  private appendSubLine(parent: HTMLElement, text: string, cls: string, isCurrent: boolean): void {
+  /** Lay the current line out as romaji | original | translation. Romaji falls
+   *  back to a small "not found" note (romanization is on, so silence there
+   *  reads as a bug); a missing translation just leaves the slot empty. */
+  private buildCurrentRow(row: HTMLElement, p: PreparedLine, lineEl: HTMLElement): void {
+    let romaji = p.romaji;
+    let translation: string | undefined;
+    if (p.translation && this.showTranslation) {
+      // Some providers bake a transliteration into the translation as
+      // "【romaji】 english"; split it out. Skip the bracketed romaji if we
+      // already produced our own romanization.
+      const { roman, text } = splitTranslation(p.translation);
+      if (roman && !romaji) romaji = roman;
+      translation = text;
+    }
+
+    if (romaji) this.appendSubItem(row, romaji, "romaji-line");
+    else if (romanizationActive(this.romanization) && !p.furiganaHtml) {
+      this.appendSubItem(row, "no romaji found", "missing-line");
+    }
+
+    row.appendChild(lineEl);
+
+    if (translation) this.appendSubItem(row, translation, "trans-line");
+    // Marks the row as multi-column so nothing in it wraps (see overlay.css).
+    if (row.childElementCount > 1) row.classList.add("has-sides");
+  }
+
+  private appendSubItem(parent: HTMLElement, text: string, cls: string): void {
     const el = document.createElement("div");
-    el.className = `${cls} ${isCurrent ? "current" : "context"}`;
+    el.className = `${cls} current`;
     el.textContent = text;
     parent.appendChild(el);
   }
