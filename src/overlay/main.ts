@@ -40,6 +40,7 @@ let autoHideDelayMs = 5000;
 let hideTimer = 0;
 let lastTimelinePos = -1;
 let loadSeq = 0;
+let trackChangedAt = 0; // when the current track started (gates early rendering)
 
 function applyOffsets(): void {
   clock.setUserOffset(globalOffsetMs + trackOffsetMs);
@@ -121,7 +122,12 @@ function applyLayout(settings: Settings): void {
 }
 
 function frame(): void {
-  if (hasDoc) renderer.render(estimatePos(Date.now()));
+  // Hold rendering until the clock has more than the first (often stale) SMTC
+  // report to go on — otherwise a fresh track can flash a wrong/late line
+  // before the position self-corrects. Fall back after a beat for players that
+  // report position sparsely.
+  const clockReady = clock.hasSettled() || Date.now() - trackChangedAt > 1500;
+  if (hasDoc && clockReady) renderer.render(estimatePos(Date.now()));
   requestAnimationFrame(frame);
 }
 
@@ -288,6 +294,7 @@ async function boot(): Promise<void> {
     setFaded(false); // a new track means we're active
     clock.reset(); // don't carry the previous song's position/anchor
     lastTimelinePos = -1;
+    trackChangedAt = Date.now();
     void loadLyrics(t, false);
   });
   await onPlaybackState((p) => {
@@ -345,6 +352,7 @@ async function seedCurrentTrack(): Promise<void> {
         setFaded(false);
         clock.reset();
         lastTimelinePos = -1;
+        trackChangedAt = Date.now();
         void loadLyrics(existing, false);
         return;
       }

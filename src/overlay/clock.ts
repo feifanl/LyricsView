@@ -28,6 +28,7 @@ export class PlaybackClock {
   private userOffsetMs = 0;
   private initialized = false;
   private lastReportPos = 0;
+  private updates = 0;
 
   private raw(now: number): number {
     const elapsed = this.playing ? (now - this.reportAt) * this.rate : 0;
@@ -48,6 +49,7 @@ export class PlaybackClock {
    */
   update(report: TimelineReport, now: number): void {
     this.rate = report.rate > 0 ? report.rate : 1;
+    this.updates += 1;
 
     if (!this.initialized) {
       this.anchor(report);
@@ -79,6 +81,14 @@ export class PlaybackClock {
     this.posAtReport = 0;
     this.reportAt = 0;
     this.lastReportPos = 0;
+    this.updates = 0;
+  }
+
+  /** True once we've had more than one report since the last reset, so the
+   *  anchor is no longer just the (often stale) first post-track-change report.
+   *  Callers gate rendering on this to avoid flashing a wrong line at song start. */
+  hasSettled(): boolean {
+    return this.updates >= 2;
   }
 
   /** Toggle play/pause without jumping: rebase onto the current estimate. */

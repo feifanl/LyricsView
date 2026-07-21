@@ -224,23 +224,37 @@ export class Renderer {
     const old = this.currentWrapper;
     if (old) {
       old.classList.add("leaving");
-      window.setTimeout(() => old.remove(), 380);
+      window.setTimeout(() => old.remove(), 200);
     }
     this.currentWrapper = null;
   }
 
   private renderPlain(): void {
     if (this.plain === null) return;
-    const block = document.createElement("div");
-    block.className = "lyric-line plain-block";
-    block.textContent = this.plain;
-    this.container.appendChild(block);
+    // Unsynced lyrics have no timestamps, so there's nothing to follow. Dumping
+    // the whole song into a single-line bar just fills it with stacked text, so
+    // say so instead and leave the bar readable.
+    const wrapper = document.createElement("div");
+    wrapper.className = "stack mounted";
+    const line = document.createElement("div");
+    line.className = "lyric-line current status-line";
+    line.textContent = "♪ unsynced lyrics only";
+    wrapper.appendChild(line);
+    this.container.appendChild(wrapper);
+    this.currentWrapper = wrapper;
     this.scheduleFit();
   }
 
   private rebuildStack(idx: number): void {
     this.wordSpans = [];
     this.prevActive = -1;
+
+    // Drop any stacks still lingering from earlier fades (rapid line changes can
+    // queue several); only the outgoing current stack should crossfade. Without
+    // this, fast songs leave a pile of half-faded lines stacked on the box.
+    for (const node of Array.from(this.container.querySelectorAll(".stack"))) {
+      if (node !== this.currentWrapper) node.remove();
+    }
 
     // Build the new line stack into its own layer, then crossfade over the old
     // one (fade current line out while the next fades in).
@@ -255,14 +269,19 @@ export class Renderer {
       el.className = i === idx ? "lyric-line current" : "lyric-line context";
       this.buildLine(el, p, i === idx);
       wrapper.appendChild(el);
-      if (p.romaji) this.appendSubLine(wrapper, p.romaji, "romaji-line", i === idx);
-      if (p.translation && this.showTranslation) {
-        // Some providers bake a transliteration into the translation as
-        // "【romaji】 english"; show each on its own line. Skip the bracketed
-        // romaji if we already produced our own romanization above.
-        const { roman, text } = splitTranslation(p.translation);
-        if (roman && !p.romaji) this.appendSubLine(wrapper, roman, "romaji-line", i === idx);
-        this.appendSubLine(wrapper, text, "trans-line", i === idx);
+      // Sub-lines (romaji / translation) hang off the CURRENT line only. On the
+      // faint prev/next context lines they'd triple the row count and force the
+      // auto-fit to shrink everything to an unreadable size.
+      if (i === idx) {
+        if (p.romaji) this.appendSubLine(wrapper, p.romaji, "romaji-line", true);
+        if (p.translation && this.showTranslation) {
+          // Some providers bake a transliteration into the translation as
+          // "【romaji】 english"; show each on its own line. Skip the bracketed
+          // romaji if we already produced our own romanization above.
+          const { roman, text } = splitTranslation(p.translation);
+          if (roman && !p.romaji) this.appendSubLine(wrapper, roman, "romaji-line", true);
+          this.appendSubLine(wrapper, text, "trans-line", true);
+        }
       }
     }
 
@@ -273,7 +292,7 @@ export class Renderer {
     const old = this.currentWrapper;
     if (old) {
       old.classList.add("leaving");
-      window.setTimeout(() => old.remove(), 380);
+      window.setTimeout(() => old.remove(), 200);
     }
     this.currentWrapper = wrapper;
   }

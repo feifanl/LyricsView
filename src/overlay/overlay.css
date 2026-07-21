@@ -74,8 +74,11 @@ body.faded .overlay-root {
 }
 .stack.leaving {
   opacity: 0;
-  transform: translateY(-8px);
+  transform: translateY(-6px);
   filter: blur(4px);
+  /* Clear the outgoing group quickly so a multi-row line (lyric + romaji +
+     translation) doesn't smear over the incoming one and read as extra lines. */
+  transition: opacity 160ms ease, transform 160ms ease, filter 160ms ease;
 }
 
 .lyric-line {
