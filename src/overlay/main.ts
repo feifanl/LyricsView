@@ -223,20 +223,15 @@ function docLang(doc: LyricsDoc): string {
   return best;
 }
 
-// Strip translations that shouldn't be shown: none when the original is already
-// in the target language, and any bundled translation whose own language isn't
-// the target (providers like NetEase always bundle a Chinese tlyric, which is
-// noise for an English-target English song). Mutates the doc in place.
+// Strip translations when the original is already in the target language — a
+// Chinese tlyric under an English song with an English target is noise. Any
+// other bundled translation is kept: for a foreign song (e.g. Korean, target
+// English) the provider's translation is the only one available, so showing it
+// beats showing nothing even if it isn't the exact target language. Mutates the
+// doc in place.
 function gateTranslations(doc: LyricsDoc): void {
-  const tgt = baseLang(targetLang);
-  if (docLang(doc) === tgt) {
+  if (docLang(doc) === baseLang(targetLang)) {
     for (const l of doc.lines) l.translation = undefined;
-    return;
-  }
-  for (const l of doc.lines) {
-    if (l.translation && baseLang(langOf(l.translation)) !== tgt) {
-      l.translation = undefined;
-    }
   }
 }
 

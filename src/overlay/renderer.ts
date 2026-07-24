@@ -4,7 +4,7 @@
 import type { AnimationStyle, RomanizationCfg } from "../shared/settings";
 import type { LyricsDoc, LyricLine, LyricWord } from "../shared/types";
 import { synthesizeWords } from "./interpolate";
-import { annotate, romanizationActive } from "./romanize";
+import { annotate, expectsRomaji, romanizationActive } from "./romanize";
 
 interface PreparedLine {
   line: LyricLine;
@@ -385,7 +385,9 @@ export class Renderer {
     }
 
     if (romaji) this.appendSubItem(row, romaji, "romaji-line");
-    else if (romanizationActive(this.romanization) && !p.furiganaHtml) {
+    else if (!p.furiganaHtml && expectsRomaji(p.line.text, this.romanization)) {
+      // Only when the line's own script should have romanized (a real miss) —
+      // never for English/Latin lines, which never produce romaji.
       this.appendSubItem(row, "no romaji found", "missing-line");
     }
 

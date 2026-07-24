@@ -29,9 +29,22 @@ pub trait Provider {
 }
 
 /// Fetch the best available lyrics for a track across the configured chain.
+///
+/// Providers are scored so a later hit can outrank an earlier one on more than
+/// just "has any lines": a doc that carries a translation beats an otherwise
+/// equal one without (so Musixmatch's English translation isn't shadowed by an
+/// earlier translation-less LRCLIB line-level doc), and word timing outranks
+/// translation. We scan until the best achievable score for the user's config
+/// is reached, then stop.
 pub async fn fetch_best<R: Runtime>(app: &AppHandle<R>, track: &TrackInfo) -> Option<LyricsDoc> {
     let cfg = config::load(app);
-    let mut base: Option<LyricsDoc> = None;
+    let want_trans = cfg.translation.wanted_lang().is_some();
+    // Best score worth waiting for: word timing (+2 per tier) is preferred only
+    // when configured; a translation adds +1 when the user shows translations.
+    let target = if cfg.prefer_word_level { 4 } else { 2 } + i32::from(want_trans);
+
+    let mut best: Option<LyricsDoc> = None;
+    let mut best_score = -1;
 
     for &id in &cfg.provider_order {
         if !provider_active(&cfg, id) {
@@ -40,28 +53,31 @@ pub async fn fetch_best<R: Runtime>(app: &AppHandle<R>, track: &TrackInfo) -> Op
         let Some(doc) = fetch_from(app, id, track).await else {
             continue;
         };
-        if doc.has_word_timing {
-            return Some(doc); // word-level always wins
+        let score = doc_score(&doc, want_trans);
+        if score > best_score {
+            best_score = score;
+            best = Some(doc);
         }
-        // Rank what we keep: timed lines beat a plain (unsynced) fallback. Without
-        // this an early provider that only has plain text permanently shadows a
-        // properly synced doc from a later one, and the overlay ends up dumping
-        // the whole song instead of following along.
-        let upgrade = match &base {
-            None => true,
-            Some(b) => b.lines.is_empty() && !doc.lines.is_empty(),
-        };
-        if upgrade {
-            base = Some(doc);
-        }
-        // A synced hit is good enough unless we're still hunting word timing; a
-        // plain-only hit never is, so keep scanning for something timed.
-        let have_synced = base.as_ref().is_some_and(|b| !b.lines.is_empty());
-        if !cfg.prefer_word_level && have_synced {
-            return base;
+        if best_score >= target {
+            break;
         }
     }
-    base
+    best
+}
+
+/// Rank a fetched doc. Timing dominates (word-level 4, synced 2, plain 0); a
+/// translation adds 1 when the user wants translations. This makes a translated
+/// line-level doc (3) beat a translation-less one (2) but never beat word timing.
+fn doc_score(doc: &LyricsDoc, want_trans: bool) -> i32 {
+    let timing = if doc.has_word_timing {
+        4
+    } else if !doc.lines.is_empty() {
+        2
+    } else {
+        0
+    };
+    let has_trans = want_trans && doc.lines.iter().any(|l| l.translation.is_some());
+    timing + i32::from(has_trans)
 }
 
 /// Search a single provider explicitly (settings "search" tab).

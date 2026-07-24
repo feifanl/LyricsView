@@ -28,6 +28,13 @@ export function detectScript(text: string): Script {
   return "other";
 }
 
+/** Whether this line should produce romaji under the current config — true only
+ *  when its detected script is non-Latin AND enabled. Latin/English lines return
+ *  false, so callers don't show a "no romaji" note for text that never romanizes. */
+export function expectsRomaji(text: string, cfg: RomanizationCfg): boolean {
+  return scriptEnabled(detectScript(text), cfg);
+}
+
 function scriptEnabled(script: Script, cfg: RomanizationCfg): boolean {
   // `auto` romanizes every detected non-Latin script; per-language flags act as
   // overrides to enable a single script while auto is off.
