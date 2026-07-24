@@ -44,6 +44,13 @@ let hideTimer = 0;
 let lastTimelinePos = -1;
 let loadSeq = 0;
 let trackChangedAt = 0; // when the current track started (gates early rendering)
+// Empty-state = the box holds only a status note (no lyrics / unsynced only), no
+// real lyric content. We show that note briefly, then fade the overlay so it
+// isn't a thin empty pill — and, while empty, playback activity must not un-fade
+// it back into view.
+let emptyState = false;
+let emptyHideTimer = 0;
+const EMPTY_STATE_HIDE_MS = 4000;
 
 function applyOffsets(): void {
   clock.setUserOffset(globalOffsetMs + trackOffsetMs);
@@ -62,6 +69,29 @@ function setFaded(faded: boolean): void {
   document.body.classList.toggle("faded", faded);
 }
 
+/** Mark the overlay as empty (only a status note showing): reveal it briefly,
+ *  then fade after a short beat so an empty pill doesn't linger. */
+function startEmptyHide(): void {
+  emptyState = true;
+  setFaded(false); // show the note first
+  window.clearTimeout(emptyHideTimer);
+  emptyHideTimer = window.setTimeout(() => {
+    if (emptyState) setFaded(true);
+  }, EMPTY_STATE_HIDE_MS);
+}
+
+/** Show a status note and fade the overlay after a beat (no lyrics / error). */
+function enterEmptyState(message: string): void {
+  setStatus(message);
+  startEmptyHide();
+}
+
+/** Leave the empty-state (real lyrics arrived, or the track changed). */
+function exitEmptyState(): void {
+  emptyState = false;
+  window.clearTimeout(emptyHideTimer);
+}
+
 function scheduleAutoHide(): void {
   window.clearTimeout(hideTimer);
   if (autoHideEnabled && !clock.isPlaying()) {
@@ -70,6 +100,7 @@ function scheduleAutoHide(): void {
 }
 
 function onPlayingChanged(playing: boolean): void {
+  if (emptyState) return; // nothing to show — let the empty-state fade stand
   if (playing) {
     window.clearTimeout(hideTimer);
     setFaded(false);
@@ -166,23 +197,30 @@ async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
   currentDoc = null;
   await loadTrackMeta();
   if (seq !== loadSeq) return;
+  exitEmptyState(); // a fresh search supersedes any prior empty-state
   setStatus(force ? "reloading…" : "searching lyrics…");
   try {
     const doc = await cmd.fetchLyrics(t, force);
     if (seq !== loadSeq) return; // a newer track superseded this fetch
-    if (doc && (doc.lines.length > 0 || doc.plain)) {
+    if (doc && doc.lines.length > 0) {
       gateTranslations(doc); // drop translations that don't match the target language
       currentDoc = doc;
       renderer.setDoc(doc); // replaces the status message
       hasDoc = true;
       void maybeTranslate(doc);
+    } else if (doc && doc.plain) {
+      // Unsynced lyrics only: nothing to follow, so treat the note as empty-state.
+      currentDoc = doc;
+      renderer.setDoc(doc); // renders "unsynced lyrics only"
+      hasDoc = true;
+      startEmptyHide();
     } else {
-      setStatus("♪ no lyrics found");
+      enterEmptyState("♪ no lyrics found");
     }
   } catch (e) {
     if (seq !== loadSeq) return;
     console.error("[overlay] fetch_lyrics failed", e);
-    setStatus("lyrics error");
+    enterEmptyState("lyrics error");
   }
 }
 
@@ -347,6 +385,7 @@ async function boot(): Promise<void> {
   });
 
   await onTrackChanged((t) => {
+    exitEmptyState(); // new song: clear any lingering empty-state fade
     setFaded(false); // a new track means we're active
     clock.reset(); // don't carry the previous song's position/anchor
     lastTimelinePos = -1;
@@ -360,8 +399,9 @@ async function boot(): Promise<void> {
   await onTimeline((t) => {
     clock.update(t, Date.now());
     // Advancing timeline = active playback: keep the overlay visible even if
-    // the player's playback-state event is unreliable (browsers).
-    if (t.positionMs > lastTimelinePos && t.positionMs - lastTimelinePos < 5000) {
+    // the player's playback-state event is unreliable (browsers). Skip while
+    // empty — an empty pill shouldn't pop back up just because the song plays on.
+    if (!emptyState && t.positionMs > lastTimelinePos && t.positionMs - lastTimelinePos < 5000) {
       window.clearTimeout(hideTimer);
       setFaded(false);
     }
@@ -382,7 +422,7 @@ async function boot(): Promise<void> {
     targetLang = s.translation.targetLang;
     autoHideEnabled = s.autoHide.enabled;
     autoHideDelayMs = s.autoHide.delaySec * 1000;
-    if (!autoHideEnabled) setFaded(false);
+    if (!autoHideEnabled && !emptyState) setFaded(false);
     applyOffsets();
     applyPresetVars(s);
     applyLayout(s);

@@ -194,7 +194,9 @@ ruby rt {
   opacity: 0.35;
 }
 
-/* "no romaji/translation found" — quieter and smaller than a real sub-line. */
+/* "no romaji/translation found" — quieter and smaller than a real sub-line, and
+   it fades out after a few seconds so it doesn't linger under every line. Rebuilt
+   per line change, so the animation restarts for each new current line. */
 .missing-line {
   font-size: calc(var(--sub-font-size) * 0.45);
   white-space: nowrap;
@@ -203,6 +205,13 @@ ruby rt {
   text-align: center;
   line-height: 1.1;
   font-style: italic;
+  animation: missing-fade 0.6s ease 3s forwards;
+}
+
+@keyframes missing-fade {
+  to {
+    opacity: 0;
+  }
 }
 
 .plain-block {
