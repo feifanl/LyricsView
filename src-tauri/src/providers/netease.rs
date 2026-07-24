@@ -90,6 +90,14 @@ impl Netease {
             parse_lrc(lrc?, SourceId::Netease, key).ok()?
         };
 
+        // Instrumental tracks come back as a single placeholder line
+        // ("纯音乐，请欣赏" = "instrumental, please enjoy"). That's not lyrics —
+        // treat it as a miss so the overlay shows "no lyrics" instead of freezing
+        // on the placeholder (which reads as leftover lyrics from another song).
+        if is_instrumental_placeholder(&doc.lines) {
+            return None;
+        }
+
         // Attach NetEase's bundled translation (tlyric) per line, if present.
         if let Some(tlyric) = tlyric {
             if let Ok(tdoc) = parse_lrc(tlyric, SourceId::Netease, key) {
@@ -98,6 +106,17 @@ impl Netease {
         }
         Some(doc)
     }
+}
+
+/// True when the parsed lyrics are just NetEase's instrumental placeholder
+/// (a lone "纯音乐，请欣赏" line, ignoring CJK/ASCII punctuation and spacing).
+fn is_instrumental_placeholder(lines: &[LyricLine]) -> bool {
+    let joined: String = lines
+        .iter()
+        .flat_map(|l| l.text.chars())
+        .filter(|c| c.is_alphanumeric()) // drop punctuation/spaces (，, spaces…)
+        .collect();
+    joined == "纯音乐请欣赏"
 }
 
 /// Match translation lines to main lines by nearest start time (±500 ms).
@@ -140,4 +159,26 @@ fn candidate_from_song(song: &Value) -> Option<SearchCandidate> {
         duration_ms: song.get("dt").and_then(Value::as_i64).map(|d| d as u64),
         has_word_timing: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line(text: &str) -> LyricLine {
+        LyricLine::new(0, 0, text.to_string())
+    }
+
+    #[test]
+    fn detects_instrumental_placeholder() {
+        assert!(is_instrumental_placeholder(&[line("纯音乐，请欣赏")]));
+        assert!(is_instrumental_placeholder(&[line("纯音乐, 请欣赏")]));
+    }
+
+    #[test]
+    fn real_lyrics_are_not_placeholder() {
+        assert!(!is_instrumental_placeholder(&[line("纯音乐"), line("真正的歌词")]));
+        assert!(!is_instrumental_placeholder(&[line("hello world")]));
+        assert!(!is_instrumental_placeholder(&[]));
+    }
 }

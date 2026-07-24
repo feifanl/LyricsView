@@ -81,6 +81,18 @@ describe("PlaybackClock", () => {
     expect(c.estimate(11_000)).toBeCloseTo(1000, 0);
   });
 
+  it("keeps the sample time when play is confirmed after the first report", () => {
+    // Track-start order (poll emits timeline before playback-state): the first
+    // report is anchored while still 'paused', then playback-state confirms
+    // playing. Its position was sampled at t=0 but processed 5 s later; the
+    // estimate must reflect that 5 s of elapsed audio, not restart from 0.
+    const c = new PlaybackClock();
+    c.update({ positionMs: 0, reportedAtMs: 0, rate: 1 }, 5000);
+    c.setPlaying(true, 5000);
+    expect(c.estimate(5000)).toBeCloseTo(5000, 0); // not 0 (late by 5 s)
+    expect(c.estimate(6000)).toBeCloseTo(6000, 0);
+  });
+
   it("does not jump when toggling pause/play", () => {
     const c = playingClock(10_000, 1000);
     const at = 5000;

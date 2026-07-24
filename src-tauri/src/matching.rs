@@ -73,7 +73,21 @@ pub fn score(track: &TrackInfo, cand: &SearchCandidate) -> Option<f64> {
         _ => 0.5, // unknown duration: neutral
     };
 
-    Some(title * 0.5 + artist * 0.3 + dur * 0.2)
+    let mut s = title * 0.5 + artist * 0.3 + dur * 0.2;
+
+    // Album agreement breaks ties between same-title/same-artist versions — e.g.
+    // Beyond's "光辉岁月" ships as both a Cantonese original and a Mandarin
+    // re-recording, identical in title and artist but on different albums. It's
+    // only ever a bonus: album names differ across services (and are often blank),
+    // so a mismatch must never sink an otherwise-good hit.
+    if !track.album.trim().is_empty() && !cand.album.trim().is_empty() {
+        let album = similarity(&track.album, &cand.album);
+        if album > 0.6 {
+            s += album * 0.15;
+        }
+    }
+
+    Some(s.min(1.0))
 }
 
 /// Pick the best-scoring candidate above a minimum confidence.
@@ -136,6 +150,27 @@ mod tests {
             cand("Never Gonna Give You Up (Live)", "Rick Astley", Some(220_000)),
         ];
         assert_eq!(best_match(&t, &cands), Some(1));
+    }
+
+    #[test]
+    fn album_disambiguates_same_title_artist_versions() {
+        // Two "光辉岁月" by Beyond, same title/artist, near-identical duration;
+        // the album is the only thing telling the Mandarin re-record from the
+        // Cantonese original.
+        // Track metadata arrives in Traditional (YouTube Music); the provider
+        // candidates are Simplified. Normalization folds both to compare.
+        let t = TrackInfo {
+            title: "光輝歲月".into(),
+            artist: "Beyond".into(),
+            album: "命運派對".into(), // Traditional, as YT Music surfaces it
+            duration_ms: 300_000,
+            source_app_id: String::new(),
+        };
+        let mut other = cand("光辉岁月", "Beyond", Some(300_000));
+        other.album = "信念".into();
+        let mut target = cand("光辉岁月", "Beyond", Some(300_000));
+        target.album = "命运派对".into();
+        assert_eq!(best_match(&t, &[other, target]), Some(1));
     }
 
     #[test]

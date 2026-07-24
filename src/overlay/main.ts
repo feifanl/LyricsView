@@ -18,6 +18,7 @@ import { PlaybackClock } from "./clock";
 import { initEditMode } from "./edit";
 import { restoreGeometry } from "./geometry";
 import { Renderer } from "./renderer";
+import { detectScript } from "./romanize";
 import { shareCard } from "./share";
 
 const lyricsEl = document.getElementById("lyrics") as HTMLDivElement;
@@ -35,6 +36,7 @@ let trackKey: string | null = null;
 let toastTimer = 0;
 let showTranslation = false; // Original vs Translated view
 let aiEnabled = false; // allow AI to fill lines with no built-in translation
+let targetLang = "en"; // language the user wants lyrics translated INTO
 let currentSettings: Settings | null = null;
 let autoHideEnabled = true;
 let autoHideDelayMs = 5000;
@@ -169,6 +171,7 @@ async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
     const doc = await cmd.fetchLyrics(t, force);
     if (seq !== loadSeq) return; // a newer track superseded this fetch
     if (doc && (doc.lines.length > 0 || doc.plain)) {
+      gateTranslations(doc); // drop translations that don't match the target language
       currentDoc = doc;
       renderer.setDoc(doc); // replaces the status message
       hasDoc = true;
@@ -183,11 +186,66 @@ async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
   }
 }
 
+// A translation only makes sense when the original isn't already in the user's
+// target language. Detect the language of a piece of text via its script;
+// Latin script is assumed to be the (Latin-alphabet) target, so it collapses to
+// the target's base code — good enough to stop e.g. a Chinese tlyric showing
+// under an English song.
+function langOf(text: string): string {
+  const s = detectScript(text); // ja | zh | ko | ru | other
+  return s === "other" ? "latin" : s;
+}
+
+function baseLang(code: string): string {
+  const base = code.toLowerCase().split(/[-_]/)[0] ?? code.toLowerCase();
+  // Latin-script languages (en, es, fr, de, …) all read as "latin" from script
+  // detection, so map the target's code into that bucket to compare like-for-like.
+  return /^(en|es|fr|de|it|pt|nl|id|ms|vi|tr|pl)$/.test(base) ? "latin" : base;
+}
+
+/** Dominant original language across the doc's non-empty lines. */
+function docLang(doc: LyricsDoc): string {
+  const counts = new Map<string, number>();
+  for (const l of doc.lines) {
+    const t = l.text.trim();
+    if (!t) continue;
+    const lang = langOf(t);
+    counts.set(lang, (counts.get(lang) ?? 0) + 1);
+  }
+  let best = "latin";
+  let max = 0;
+  for (const [lang, n] of counts) {
+    if (n > max) {
+      max = n;
+      best = lang;
+    }
+  }
+  return best;
+}
+
+// Strip translations that shouldn't be shown: none when the original is already
+// in the target language, and any bundled translation whose own language isn't
+// the target (providers like NetEase always bundle a Chinese tlyric, which is
+// noise for an English-target English song). Mutates the doc in place.
+function gateTranslations(doc: LyricsDoc): void {
+  const tgt = baseLang(targetLang);
+  if (docLang(doc) === tgt) {
+    for (const l of doc.lines) l.translation = undefined;
+    return;
+  }
+  for (const l of doc.lines) {
+    if (l.translation && baseLang(langOf(l.translation)) !== tgt) {
+      l.translation = undefined;
+    }
+  }
+}
+
 // Prefer built-in (fetched) translations; only call the AI provider to fill
 // lines that arrived without one, and only when the user opted into the
 // translated view and configured a key.
 async function maybeTranslate(doc: LyricsDoc): Promise<void> {
   if (!showTranslation || doc.lines.length === 0) return;
+  if (docLang(doc) === baseLang(targetLang)) return; // original already in target
   const missing = doc.lines.filter((l) => !l.translation);
   if (missing.length === 0) return; // built-in translations cover everything
   if (!aiEnabled) return; // no AI fallback configured — show what we have
@@ -278,6 +336,7 @@ async function boot(): Promise<void> {
   globalOffsetMs = settings.globalOffsetMs;
   showTranslation = settings.translation.show;
   aiEnabled = settings.translation.enabled;
+  targetLang = settings.translation.targetLang;
   autoHideEnabled = settings.autoHide.enabled;
   autoHideDelayMs = settings.autoHide.delaySec * 1000;
   applyOffsets();
@@ -324,6 +383,8 @@ async function boot(): Promise<void> {
     globalOffsetMs = s.globalOffsetMs;
     showTranslation = s.translation.show;
     aiEnabled = s.translation.enabled;
+    const langChanged = targetLang !== s.translation.targetLang;
+    targetLang = s.translation.targetLang;
     autoHideEnabled = s.autoHide.enabled;
     autoHideDelayMs = s.autoHide.delaySec * 1000;
     if (!autoHideEnabled) setFaded(false);
@@ -332,7 +393,10 @@ async function boot(): Promise<void> {
     applyLayout(s);
     // Re-dock / re-place live when the preset or dock mode changes.
     void restoreGeometry(activePreset(s)).then(() => configureAutoWidth(s));
-    if (showTranslation && currentDoc) void maybeTranslate(currentDoc);
+    // Target-language change re-gates translations from a fresh (cached) fetch:
+    // gating strips them destructively, so we can't restore from currentDoc.
+    if (langChanged && currentTrack) void loadLyrics(currentTrack, false);
+    else if (showTranslation && currentDoc) void maybeTranslate(currentDoc);
   });
 
   // Seed from whatever is already playing. The Rust watcher emits the initial

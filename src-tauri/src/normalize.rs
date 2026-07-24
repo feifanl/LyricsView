@@ -5,9 +5,17 @@ use sha1::{Digest, Sha1};
 
 use crate::model::TrackInfo;
 
-/// Lowercase, strip feat. clauses and bracketed suffixes, collapse whitespace.
+/// Fold Traditional Chinese to Simplified, lowercase, strip feat. clauses and
+/// bracketed suffixes, collapse whitespace.
+///
+/// The Traditional→Simplified fold is essential: players surface metadata in
+/// Traditional (YouTube Music shows "光輝歲月" / album "命運派對") while the
+/// providers' catalogs are Simplified ("光辉岁月" / "命运派对"). Without folding,
+/// the same song scores as only ~50% similar across scripts, so matching picks
+/// the wrong release (or nothing). ASCII text is untouched by the fold.
 pub fn normalize(input: &str) -> String {
-    let lower = input.to_lowercase();
+    let simplified = fast2s::convert(input);
+    let lower = simplified.to_lowercase();
     let no_brackets = strip_bracketed(&lower);
     let no_feat = strip_feat(&no_brackets);
     collapse_ws(&no_feat)
@@ -61,6 +69,14 @@ pub fn track_key(track: &TrackInfo) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folds_traditional_to_simplified() {
+        // YouTube Music (Traditional) must normalize to the same string as the
+        // providers' Simplified catalog entries.
+        assert_eq!(normalize("光輝歲月"), normalize("光辉岁月"));
+        assert_eq!(normalize("命運派對"), normalize("命运派对"));
+    }
 
     #[test]
     fn strips_feat_and_brackets() {

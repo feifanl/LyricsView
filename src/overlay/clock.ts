@@ -29,6 +29,7 @@ export class PlaybackClock {
   private initialized = false;
   private lastReportPos = 0;
   private updates = 0;
+  private sawPause = false; // did we observe a real pause since the last resume?
 
   private raw(now: number): number {
     const elapsed = this.playing ? (now - this.reportAt) * this.rate : 0;
@@ -82,6 +83,7 @@ export class PlaybackClock {
     this.reportAt = 0;
     this.lastReportPos = 0;
     this.updates = 0;
+    this.sawPause = false;
   }
 
   /** True once we've had more than one report since the last reset, so the
@@ -91,11 +93,27 @@ export class PlaybackClock {
     return this.updates >= 2;
   }
 
-  /** Toggle play/pause without jumping: rebase onto the current estimate. */
+  /**
+   * Toggle play/pause. Pause freezes at the current estimate. Resume normally
+   * rebases onto that frozen estimate at `now` so the paused gap isn't counted —
+   * but the FIRST play-confirmation of an already-moving track is not a resume:
+   * the current anchor's `reportAt` is a real sample time, and rebasing it to
+   * `now` would drop the sample's staleness and run the highlight late. So we
+   * only rebase when we actually observed a pause (or before the first anchor).
+   */
   setPlaying(playing: boolean, now: number): void {
     if (playing === this.playing) return;
-    this.posAtReport = this.raw(now);
-    this.reportAt = now;
+    if (playing) {
+      if (this.sawPause || !this.initialized) {
+        this.posAtReport = this.raw(now);
+        this.reportAt = now;
+      }
+      this.sawPause = false;
+    } else {
+      this.posAtReport = this.raw(now);
+      this.reportAt = now;
+      this.sawPause = true;
+    }
     this.playing = playing;
   }
 
