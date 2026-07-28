@@ -58,15 +58,34 @@ describe("lineIndexAt", () => {
       [10_000, SHORT],
       [45_000, SHORT],
     ]);
-    expect(lineIndexAt(withSolo, 21_000)).toBe(0); // still holding
-    expect(lineIndexAt(withSolo, 22_001)).toBe(-1); // break: nothing
+    expect(lineIndexAt(withSolo, 27_000)).toBe(0); // still holding
+    expect(lineIndexAt(withSolo, 28_001)).toBe(-1); // break: nothing
     expect(lineIndexAt(withSolo, 44_000)).toBe(-1);
     expect(lineIndexAt(withSolo, 45_000)).toBe(1); // singing resumes
   });
 
+  it("bridges the gap word-level timings leave between lines", () => {
+    // yrc/richsync/TTML report when singing actually stops, so `end` falls short
+    // of the next line's start. Those gaps must not blank the box.
+    const wordLevel = [
+      { start: 10_000, end: 12_500, chars: SHORT.length },
+      { start: 14_270, end: 17_000, chars: SHORT.length },
+    ];
+    expect(lineIndexAt(wordLevel, 12_500)).toBe(0); // singing stopped
+    expect(lineIndexAt(wordLevel, 14_269)).toBe(0); // still shown across the gap
+    expect(lineIndexAt(wordLevel, 14_270)).toBe(1); // next line takes over
+  });
+
+  it("keeps a long held line up through all of its singing", () => {
+    // A 14 s sung line outlasts the plausible-length clamp; the clamp must not
+    // cut it while the note is still going.
+    const held = [{ start: 10_000, end: 24_000, chars: SHORT.length }];
+    expect(lineIndexAt(held, 23_500)).toBe(0);
+  });
+
   it("clears the final line after the outro instead of freezing on it", () => {
-    expect(lineIndexAt(lines, 19_999)).toBe(2);
-    expect(lineIndexAt(lines, 20_000)).toBe(-1);
+    expect(lineIndexAt(lines, 25_999)).toBe(2);
+    expect(lineIndexAt(lines, 26_000)).toBe(-1);
   });
 
   it("never cuts a line whose text is unknown", () => {

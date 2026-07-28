@@ -1,17 +1,21 @@
 // Which lyric line is on screen at a playback position. Pure logic,
 // unit-tested (timeline.test.ts).
 //
-// The parser gives every line an end time of the *next* line's start, so a line
-// nominally covers the silence after it too. That's right for normal spacing and
-// wrong for an instrumental break: an 8-bar solo would leave the last sung line
-// frozen on screen for half a minute. Same for the outro, where the final line
-// otherwise stays up until the track changes.
+// `end` means different things by source. Line-level LRC has no idea when
+// singing stops, so the parser fills in the *next* line's start: the span
+// swallows any silence that follows. Word-level sources (yrc, richsync, TTML)
+// report the real end of singing, leaving a genuine gap before the next line —
+// commonly a second or two, and on more than half the lines of a typical track.
 //
-// The span alone can't tell the two apart — a sparse folk verse and a short solo
-// look identical. So the cut-off is measured against how long the line's own
-// text plausibly takes to sing, generously: only a gap that dwarfs the words
-// counts as a break. Cutting a line the singer is still holding is the worse
-// error of the two, so every constant here errs long.
+// So a line must outlive its own `end` by a comfortable margin, or every one of
+// those gaps blanks the box between lines. It must also not outlive it forever,
+// or an instrumental break leaves the last sung line frozen for half a minute
+// and the outro line stays up until the track changes.
+//
+// Hence: visible until singing stops, plus a linger. The stop point is clamped
+// by what the line's own text plausibly takes to sing, which is what catches the
+// LRC case where `end` is really the far side of a break. Cutting a line the
+// singer is still on is the worse error, so every constant here errs long.
 
 export interface LineSpan {
   start: number;
@@ -31,9 +35,10 @@ const SLACK = 2.5;
  *  common, and dropping the lyric while the singer is still on it is a much
  *  worse failure than a stale line during a solo. */
 const MIN_HOLD_MS = 12_000;
-/** A span must exceed the hold by this much before it's worth cutting at all —
- *  otherwise a line would lose its last second to gain nothing. */
-const CUT_MARGIN_MS = 4_000;
+/** How long a finished line stays up before the box empties. Must clear the
+ *  gaps word-level timings leave between lines — a second or two is routine —
+ *  by enough margin that normal phrasing never flickers. */
+const LINGER_MS = 6_000;
 
 /** How long the line's own text could plausibly occupy. */
 function plausibleSungMs(chars: number): number {
@@ -43,9 +48,12 @@ function plausibleSungMs(chars: number): number {
 
 /** Last moment `line` should remain on screen. */
 function visibleUntil(line: LineSpan): number {
-  const span = line.end - line.start;
-  const hold = plausibleSungMs(line.chars);
-  return line.start + (span > hold + CUT_MARGIN_MS ? hold : span);
+  // Clamping to the plausible sung length is what stops an LRC line — whose
+  // `end` is really the next line's start — from riding out a whole solo. It
+  // never shortens a line below its own singing, since the clamp only binds
+  // once `end` is further out than the words can account for.
+  const sungUntil = Math.min(line.end, line.start + plausibleSungMs(line.chars));
+  return sungUntil + LINGER_MS;
 }
 
 /**
