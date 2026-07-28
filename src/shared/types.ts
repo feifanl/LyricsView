@@ -52,12 +52,16 @@ export interface LyricsDoc {
   lines: LyricLine[];
   plain?: string;
   hasWordTiming: boolean;
+  /** Duration of the release this timeline was timed against, when the provider
+   *  reports one. Drives automatic drift correction (see overlay/drift.ts). */
+  sourceDurationMs?: number;
 }
 
 export interface TrackMeta {
   preferredSource?: SourceId;
   offsetMs: number;
-  /** Per-track drift correction, parts-per-million of position (0 = none). */
+  /** Manual per-track drift correction, parts-per-million of position (0 =
+   *  none). Added on top of any automatic correction. */
   stretchPpm: number;
 }
 

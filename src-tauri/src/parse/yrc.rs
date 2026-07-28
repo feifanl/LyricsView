@@ -30,6 +30,7 @@ pub fn parse_yrc(text: &str, track_key: &str) -> Result<LyricsDoc, ParseError> {
         lines,
         plain: None,
         has_word_timing,
+        source_duration_ms: None,
     })
 }
 

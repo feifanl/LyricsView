@@ -22,8 +22,9 @@ impl Provider for Netease {
         let query = format!("{} {}", track.title, track.artist);
         let candidates = self.search(http, &query).await;
         let idx = best_match(track, &candidates)?;
-        let id = candidates.get(idx)?.id.clone();
-        self.lyric_doc(http, &id, &key).await
+        let cand = candidates.get(idx)?;
+        let (id, src_dur) = (cand.id.clone(), cand.duration_ms);
+        self.lyric_doc(http, &id, &key, src_dur).await
     }
 
     async fn search(&self, http: &Client, query: &str) -> Vec<SearchCandidate> {
@@ -51,12 +52,18 @@ impl Provider for Netease {
 
     async fn fetch_candidate(&self, http: &Client, cand: &SearchCandidate) -> Option<LyricsDoc> {
         let key = super::candidate_key(cand);
-        self.lyric_doc(http, &cand.id, &key).await
+        self.lyric_doc(http, &cand.id, &key, cand.duration_ms).await
     }
 }
 
 impl Netease {
-    async fn lyric_doc(&self, http: &Client, id: &str, key: &str) -> Option<LyricsDoc> {
+    async fn lyric_doc(
+        &self,
+        http: &Client,
+        id: &str,
+        key: &str,
+        src_dur: Option<u64>,
+    ) -> Option<LyricsDoc> {
         let v = http
             .get(format!("{REFERER}/api/song/lyric/v1"))
             .header("Referer", REFERER)
@@ -104,7 +111,7 @@ impl Netease {
                 attach_translations(&mut doc.lines, &tdoc.lines);
             }
         }
-        Some(doc)
+        Some(doc.with_source_duration(src_dur))
     }
 }
 

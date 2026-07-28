@@ -79,13 +79,13 @@ impl Musixmatch {
         Some(token)
     }
 
-    /// macro.subtitles.get -> (track_id, has_richsync, line-level LRC).
+    /// macro.subtitles.get -> the server's matched track plus its line-level LRC.
     async fn macro_subtitles(
         &self,
         http: &Client,
         token: &str,
         track: &TrackInfo,
-    ) -> Option<(i64, bool, Option<String>, String, Option<String>)> {
+    ) -> Option<MacroMatch> {
         let dur = (track.duration_ms / 1000).to_string();
         let v = get_json(
             http,
@@ -125,6 +125,13 @@ impl Musixmatch {
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty())
             .map(|s| s.to_ascii_lowercase());
+        // The matched release's own length (seconds) — the timeline is timed
+        // against it, so it anchors automatic drift correction.
+        let duration_ms = track_obj
+            .get("track_length")
+            .and_then(Value::as_i64)
+            .filter(|s| *s > 0)
+            .map(|s| s as u64 * 1000);
 
         let lrc = dig(
             calls,
@@ -140,7 +147,14 @@ impl Musixmatch {
         .and_then(Value::as_str)
         .map(str::to_string);
 
-        Some((track_id, has_richsync, lrc, track_name, language))
+        Some(MacroMatch {
+            track_id,
+            has_richsync,
+            lrc,
+            track_name,
+            language,
+            duration_ms,
+        })
     }
 
     async fn richsync(&self, http: &Client, token: &str, track_id: i64) -> Option<String> {
@@ -242,30 +256,29 @@ impl Provider for Musixmatch {
     async fn fetch(&self, http: &Client, track: &TrackInfo) -> Option<LyricsDoc> {
         let key = crate::normalize::track_key(track);
         let token = self.user_token(http).await?;
-        let (track_id, has_richsync, lrc, track_name, language) =
-            self.macro_subtitles(http, &token, track).await?;
+        let m = self.macro_subtitles(http, &token, track).await?;
 
         // Guard against a wildly wrong server match.
-        if !track.title.is_empty() && similarity(&track.title, &track_name) < 0.4 {
+        if !track.title.is_empty() && similarity(&track.title, &m.track_name) < 0.4 {
             return None;
         }
 
         let mut doc = None;
-        if has_richsync {
-            if let Some(body) = self.richsync(http, &token, track_id).await {
+        if m.has_richsync {
+            if let Some(body) = self.richsync(http, &token, m.track_id).await {
                 doc = parse_richsync(&body, &key).ok();
             }
         }
         // Fall back to line-level subtitles.
         if doc.is_none() {
-            doc = parse_lrc(lrc.as_deref()?, SourceId::Musixmatch, &key).ok();
+            doc = parse_lrc(m.lrc.as_deref()?, SourceId::Musixmatch, &key).ok();
         }
         let mut doc = doc?;
         // Keyless crowd translations (e.g. zh -> en) attached per line when the
         // user shows translations; AI stays a later fallback for missing lines.
-        self.enrich_translations(http, &token, track_id, &mut doc, language.as_deref())
+        self.enrich_translations(http, &token, m.track_id, &mut doc, m.language.as_deref())
             .await;
-        Some(doc)
+        Some(doc.with_source_duration(m.duration_ms))
     }
 
     async fn search(&self, http: &Client, query: &str) -> Vec<SearchCandidate> {
@@ -321,8 +334,20 @@ impl Provider for Musixmatch {
         let mut doc = doc?;
         self.enrich_translations(http, &token, track_id, &mut doc, None)
             .await;
-        Some(doc)
+        Some(doc.with_source_duration(cand.duration_ms))
     }
+}
+
+/// The server-side match behind `macro.subtitles.get`.
+struct MacroMatch {
+    track_id: i64,
+    has_richsync: bool,
+    lrc: Option<String>,
+    track_name: String,
+    /// The song's own lyrics language (ISO code), when reported.
+    language: Option<String>,
+    /// Length of the matched release.
+    duration_ms: Option<u64>,
 }
 
 fn candidate_from_track(track: &Value) -> Option<SearchCandidate> {
