@@ -261,6 +261,20 @@ button.ghost {
   cursor: pointer;
   transition: border-color 100ms ease, background 100ms ease;
 }
+button.ghost.icon {
+  padding: 4px 9px;
+  line-height: 1;
+}
+button.ghost.icon:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+/* Reorder row: up/down buttons + enable checkbox, aligned right. */
+.row-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 :root[data-theme="dark"] button.ghost {
   background: var(--panel-2);
 }

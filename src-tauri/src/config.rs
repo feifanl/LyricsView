@@ -96,6 +96,8 @@ fn default_hotkeys() -> HashMap<String, String> {
         ("prevLine", "Alt+Shift+Left"),
         ("nextLine", "Alt+Shift+Right"),
         ("reloadLyrics", "Alt+Shift+R"),
+        ("cycleFormPrev", "Alt+Shift+Up"),
+        ("cycleFormNext", "Alt+Shift+Down"),
     ]
     .iter()
     .map(|(k, v)| (k.to_string(), v.to_string()))

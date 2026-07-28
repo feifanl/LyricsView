@@ -25,6 +25,8 @@ pub enum HotkeyAction {
     PrevLine,
     NextLine,
     ReloadLyrics,
+    CycleFormPrev,
+    CycleFormNext,
 }
 
 impl HotkeyAction {
@@ -39,6 +41,8 @@ impl HotkeyAction {
             "prevLine" => Self::PrevLine,
             "nextLine" => Self::NextLine,
             "reloadLyrics" => Self::ReloadLyrics,
+            "cycleFormPrev" => Self::CycleFormPrev,
+            "cycleFormNext" => Self::CycleFormNext,
             _ => return None,
         })
     }

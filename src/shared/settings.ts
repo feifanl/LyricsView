@@ -9,7 +9,29 @@ export type HotkeyAction =
   | "driftPlus"
   | "prevLine"
   | "nextLine"
-  | "reloadLyrics";
+  | "reloadLyrics"
+  | "cycleFormPrev"
+  | "cycleFormNext";
+
+/** The three renderable forms of a lyric line. */
+export type LyricForm = "romaji" | "original" | "translation";
+
+export type LyricLayout = "inline" | "stacked" | "single";
+
+export interface LyricLinesCfg {
+  /** All three forms in display order (top-to-bottom / left-to-right). */
+  order: LyricForm[];
+  /** Which forms are shown at all. */
+  enabled: Record<LyricForm, boolean>;
+  /** inline = one row; stacked = a row each; single = one form, cycled by hotkey. */
+  layout: LyricLayout;
+}
+
+export const DEFAULT_LYRIC_LINES: LyricLinesCfg = {
+  order: ["romaji", "original", "translation"],
+  enabled: { romaji: true, original: true, translation: true },
+  layout: "inline",
+};
 
 export interface RomanizationCfg {
   /** Auto-romanize any detected non-Latin script (JA/ZH/KO/RU). When on it
@@ -92,6 +114,8 @@ export interface Settings {
     targetLang: string;
   };
   romanization: RomanizationCfg;
+  /** Which lyric forms show, their order, and the layout (see LyricLinesCfg). */
+  lyricLines: LyricLinesCfg;
   hotkeys: Record<HotkeyAction, string>;
   autoHide: { enabled: boolean; delaySec: number };
   globalOffsetMs: number;
@@ -99,7 +123,7 @@ export interface Settings {
   uiTheme: "light" | "dark";
 }
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const DEFAULT_HOTKEYS: Record<HotkeyAction, string> = {
   toggleOverlay: "Alt+Shift+L",
@@ -111,6 +135,8 @@ export const DEFAULT_HOTKEYS: Record<HotkeyAction, string> = {
   prevLine: "Alt+Shift+Left",
   nextLine: "Alt+Shift+Right",
   reloadLyrics: "Alt+Shift+R",
+  cycleFormPrev: "Alt+Shift+Up",
+  cycleFormNext: "Alt+Shift+Down",
 };
 
 function gamingPreset(): Preset {
@@ -206,6 +232,11 @@ export function defaultSettings(): Settings {
       targetLang: "en",
     },
     romanization: { auto: false, ja: false, jaFurigana: false, zh: false, ko: false, ru: false },
+    lyricLines: {
+      order: [...DEFAULT_LYRIC_LINES.order],
+      enabled: { ...DEFAULT_LYRIC_LINES.enabled },
+      layout: DEFAULT_LYRIC_LINES.layout,
+    },
     hotkeys: { ...DEFAULT_HOTKEYS },
     autoHide: { enabled: true, delaySec: 5 },
     globalOffsetMs: 0,

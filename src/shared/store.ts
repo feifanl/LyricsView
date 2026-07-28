@@ -1,5 +1,31 @@
 import { load, type Store } from "@tauri-apps/plugin-store";
-import { defaultSettings, type Settings } from "./settings";
+import { defaultSettings, type LyricForm, type LyricLinesCfg, type Settings } from "./settings";
+
+const LYRIC_FORMS: LyricForm[] = ["romaji", "original", "translation"];
+
+/** Merge saved lyric-line config over defaults, repairing the order array so it
+ *  always contains exactly the three forms once each (a corrupt/partial saved
+ *  order can't drop or duplicate a form). */
+function mergeLyricLines(
+  base: LyricLinesCfg,
+  raw: Partial<LyricLinesCfg> | undefined,
+): LyricLinesCfg {
+  if (!raw) return { order: [...base.order], enabled: { ...base.enabled }, layout: base.layout };
+  const seen = new Set<LyricForm>();
+  const order: LyricForm[] = [];
+  for (const f of raw.order ?? []) {
+    if (LYRIC_FORMS.includes(f) && !seen.has(f)) {
+      seen.add(f);
+      order.push(f);
+    }
+  }
+  for (const f of LYRIC_FORMS) if (!seen.has(f)) order.push(f); // append any missing
+  return {
+    order,
+    enabled: { ...base.enabled, ...raw.enabled },
+    layout: raw.layout ?? base.layout,
+  };
+}
 
 const STORE_FILE = "settings.json";
 const KEY = "settings";
@@ -72,6 +98,7 @@ function mergeDefaults(raw: Partial<Settings> | undefined): Settings {
       ? { ...base.translation, ...raw.translation, show: base.translation.show }
       : { ...base.translation, ...raw.translation },
     romanization: { ...base.romanization, ...raw.romanization },
+    lyricLines: mergeLyricLines(base.lyricLines, raw.lyricLines),
     hotkeys: { ...base.hotkeys, ...raw.hotkeys },
     autoHide: { ...base.autoHide, ...raw.autoHide },
   };

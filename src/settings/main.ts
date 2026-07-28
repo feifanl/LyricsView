@@ -10,6 +10,7 @@ import { appearanceTab } from "./tabs/appearance";
 import { editorTab } from "./tabs/editor";
 import { hotkeysTab } from "./tabs/hotkeys";
 import { languageTab } from "./tabs/language";
+import { lyricLinesTab } from "./tabs/lyricLines";
 import { pasteTab } from "./tabs/paste";
 import { providersTab } from "./tabs/providers";
 import { searchTab } from "./tabs/search";
@@ -24,6 +25,7 @@ const tabs: Tab[] = [
   pasteTab,
   editorTab,
   languageTab,
+  lyricLinesTab,
   hotkeysTab,
   aboutTab,
 ];
@@ -33,14 +35,24 @@ async function boot(): Promise<void> {
   document.documentElement.dataset.theme = settings.uiTheme;
   let active = tabs[0]!.id;
 
+  // Writes are serialized: controls fire faster than a store round-trip, and two
+  // overlapping read-modify-writes would drop the earlier edit.
+  let writes: Promise<void> = Promise.resolve();
+
   async function persist(mutator: (s: Settings) => void): Promise<void> {
-    const next = structuredClone(settings);
-    mutator(next);
-    settings = next;
-    ctx.settings = next;
-    document.documentElement.dataset.theme = next.uiTheme;
-    await saveSettings(next);
-    await emitSettingsChanged(next);
+    writes = writes.then(async () => {
+      // Re-read rather than mutating the boot-time copy: the overlay writes the
+      // preset's geometry straight to the store when the user finishes dragging
+      // in edit mode, and this window would otherwise write that drag back out.
+      const next = await loadSettings();
+      mutator(next);
+      settings = next;
+      ctx.settings = next;
+      document.documentElement.dataset.theme = next.uiTheme;
+      await saveSettings(next);
+      await emitSettingsChanged(next);
+    });
+    await writes;
   }
 
   const ctx: SettingsCtx = {

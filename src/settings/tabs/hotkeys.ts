@@ -15,6 +15,8 @@ const ACTIONS: { id: HotkeyAction; label: string }[] = [
   { id: "prevLine", label: "Jump to previous line" },
   { id: "nextLine", label: "Jump to next line" },
   { id: "reloadLyrics", label: "Reload lyrics" },
+  { id: "cycleFormPrev", label: "Previous form (single-line layout)" },
+  { id: "cycleFormNext", label: "Next form (single-line layout)" },
 ];
 
 const ARROWS: Record<string, string> = {
