@@ -2,23 +2,31 @@ import { describe, expect, it } from "vitest";
 import { autoStretchPpm } from "./drift";
 
 describe("autoStretchPpm", () => {
-  it("recovers the rate from a tape-speed difference", () => {
-    // A 3:00 master timed against a 3:00.6 remaster: +0.33 %.
-    const ppm = autoStretchPpm(180_000, 180_600);
-    expect(ppm).toBeCloseTo(3333, -1);
-    // Applied over the whole song it closes the ~600 ms end-of-track gap.
-    expect((180_000 * ppm) / 1_000_000).toBeCloseTo(600, 0);
+  it("recovers the rate from a genuinely longer release", () => {
+    // A 3:00 track against a timeline authored on a 3:04 release: +2.2 %.
+    const ppm = autoStretchPpm(180_000, 184_000);
+    expect(ppm).toBeCloseTo(22_222, -2);
+    // Applied over the whole song it closes the 4 s end-of-track gap.
+    expect((180_000 * ppm) / 1_000_000).toBeCloseTo(4_000, -2);
   });
 
   it("is signed the other way when the source release is shorter", () => {
-    expect(autoStretchPpm(180_000, 178_500)).toBeLessThan(0);
+    expect(autoStretchPpm(180_000, 176_000)).toBeLessThan(0);
   });
 
-  it("ignores differences inside the rounding deadband", () => {
-    // Providers report whole seconds; a gap this small is indistinguishable
-    // from that rounding, so the correction would be noise.
+  it("ignores a gap the matcher's own tolerance could explain", () => {
+    // Every provider path picks its candidate by duration proximity, so a gap
+    // this size says nothing about the timeline — acting on it invents drift.
+    expect(autoStretchPpm(180_000, 182_000)).toBe(0);
+    expect(autoStretchPpm(180_000, 178_000)).toBe(0);
     expect(autoStretchPpm(180_000, 180_300)).toBe(0);
-    expect(autoStretchPpm(180_000, 179_700)).toBe(0);
+  });
+
+  it("declines the tape-speed case it cannot tell from tolerance", () => {
+    // ~600 ms over three minutes is real drift when it happens, but it is
+    // indistinguishable from a matcher settling slightly off, so it is left to
+    // the manual drift hotkeys rather than guessed at.
+    expect(autoStretchPpm(180_000, 180_600)).toBe(0);
   });
 
   it("declines to correct a wildly different release", () => {
