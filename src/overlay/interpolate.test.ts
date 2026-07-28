@@ -36,13 +36,29 @@ describe("synthesizeWords", () => {
     expect(long).toBeGreaterThan(short);
   });
 
-  it("distributes CJK characters evenly", () => {
+  it("distributes CJK characters evenly apart from the held tail", () => {
     const words = synthesizeWords("我爱你", 0, 3000);
     expect(words.map((w) => w.text)).toEqual(["我", "爱", "你"]);
     expect(words[0]!.start).toBe(0);
     expect(words[2]!.end).toBe(3000);
-    // Roughly equal thirds.
-    expect(words[1]!.start).toBeCloseTo(1000, -2);
+    // The two leading glyphs share equally.
+    expect(words[1]!.end - words[1]!.start).toBeCloseTo(words[0]!.end - words[0]!.start, -1);
+  });
+
+  it("holds the last unit longer than an equal-length earlier one", () => {
+    // A held final syllable is the norm; an even split runs the fill through it
+    // and leaves the line looking finished while the note is still ringing.
+    const words = synthesizeWords("la la la", 0, 6000);
+    const first = words[0]!.end - words[0]!.start;
+    const last = words.at(-1)!.end - words.at(-1)!.start;
+    expect(last).toBeGreaterThan(first * 2);
+  });
+
+  it("barely shifts a line of many words", () => {
+    // The tail weight must not distort busy lines, only absorb their slack.
+    const words = synthesizeWords("one two three four five six seven eight", 0, 8000);
+    const first = words[0]!.end - words[0]!.start;
+    expect(first).toBeGreaterThan(600); // an even split would give ~780 ms
   });
 
   it("handles a single word", () => {

@@ -65,11 +65,24 @@ export function splitUnits(text: string): string[] {
   return units;
 }
 
+/** Extra weight given to the line's last fill unit.
+ *
+ *  Singers hold the final syllable of a phrase — often for seconds, and most
+ *  audibly in slow material. Splitting a line's duration purely by visual length
+ *  gives that held note the same tiny slice as any other word, so the fill runs
+ *  through it and sits completed while the note is still ringing, which reads as
+ *  the line ending early. Weighting the tail spends the line's slack where the
+ *  singing actually is. Modest on purpose: on a line of many words it barely
+ *  shifts anything, while on a short phrase — where the hold dominates — it does
+ *  most of the work. */
+const TAIL_WEIGHT = 2.5;
+
 export function synthesizeWords(text: string, start: number, end: number): LyricWord[] {
   const units = splitUnits(text);
   if (units.length === 0) return [];
   const duration = Math.max(0, end - start);
   const weights = units.map(unitWeight);
+  weights[weights.length - 1]! *= TAIL_WEIGHT;
   const total = weights.reduce((a, b) => a + b, 0);
 
   const words: LyricWord[] = [];
