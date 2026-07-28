@@ -20,11 +20,44 @@ const RANGES = {
   cyrillic: /[Ѐ-ӿ]/,
 };
 
+/** Share of a line's letters a script must hold to be called the line's script.
+ *
+ *  Detection cannot be "does any character match": lyrics providers ship
+ *  homoglyph substitutions — a Cyrillic "е" (U+0435) dropped inside an English
+ *  word — to dodge content matching. One such character used to make an English
+ *  line read as Russian, which transliterated it back into itself (a romaji
+ *  sub-line duplicating the lyric) and defeated the same-language check that
+ *  suppresses redundant translations.
+ *
+ *  A real mixed line clears this easily; a stray character or two cannot. The
+ *  cost is that a mostly-English line with a token foreign word goes
+ *  un-romanized, which is the quieter failure. */
+const MIN_SCRIPT_SHARE = 0.2;
+
+/** Dominant script of a line, by share of its letters. */
 export function detectScript(text: string): Script {
-  if (RANGES.hiragana.test(text) || RANGES.katakana.test(text)) return "ja";
-  if (RANGES.hangul.test(text)) return "ko";
-  if (RANGES.cyrillic.test(text)) return "ru";
-  if (RANGES.cjk.test(text)) return "zh";
+  let ja = 0;
+  let ko = 0;
+  let ru = 0;
+  let zh = 0;
+  let letters = 0;
+  for (const ch of text) {
+    if (!/\p{L}/u.test(ch)) continue; // punctuation, digits and spacing don't vote
+    letters += 1;
+    if (RANGES.hiragana.test(ch) || RANGES.katakana.test(ch)) ja += 1;
+    else if (RANGES.hangul.test(ch)) ko += 1;
+    else if (RANGES.cyrillic.test(ch)) ru += 1;
+    else if (RANGES.cjk.test(ch)) zh += 1;
+  }
+  if (letters === 0) return "other";
+
+  // Kana beat kanji: Japanese prose is mostly kanji by count, so a line with any
+  // meaningful kana share is Japanese rather than Chinese.
+  const jaShare = (ja + zh) / letters;
+  if (ja / letters >= MIN_SCRIPT_SHARE || (ja > 0 && jaShare >= MIN_SCRIPT_SHARE)) return "ja";
+  if (ko / letters >= MIN_SCRIPT_SHARE) return "ko";
+  if (ru / letters >= MIN_SCRIPT_SHARE) return "ru";
+  if (zh / letters >= MIN_SCRIPT_SHARE) return "zh";
   return "other";
 }
 
@@ -97,8 +130,22 @@ async function koRomaja(text: string): Promise<string> {
   return Romanize.fromString(text);
 }
 
-/** Produce a romanized sub-line (and optional furigana HTML) for a lyric line. */
+/** Letters and digits only, case-folded — for telling whether a transliteration
+ *  actually changed anything. */
+function comparable(text: string): string {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+/** Produce a romanized sub-line (and optional furigana HTML) for a lyric line.
+ *  A transliteration that comes back saying the same thing as the input is not
+ *  a romanization — it's the lyric shown twice — so it's dropped. */
 export async function annotate(text: string, cfg: RomanizationCfg): Promise<Annotation> {
+  const out = await romanize(text, cfg);
+  if (out.romaji && comparable(out.romaji) === comparable(text)) delete out.romaji;
+  return out;
+}
+
+async function romanize(text: string, cfg: RomanizationCfg): Promise<Annotation> {
   const script = detectScript(text);
   if (!scriptEnabled(script, cfg)) return {};
   try {

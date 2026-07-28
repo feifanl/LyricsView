@@ -20,6 +20,28 @@ describe("detectScript", () => {
   it("returns other for Latin", () => {
     expect(detectScript("Never gonna give you up")).toBe("other");
   });
+
+  it("ignores a homoglyph planted in an English line", () => {
+    // NetEase ships lyrics with a Cyrillic "е" (U+0435) inside English words to
+    // dodge content matching. One such character must not make the line Russian.
+    expect(detectScript("Or “you’re dеad” lights as the angler fish bite")).toBe(
+      "other",
+    );
+    expect(detectScript("More like a deer in the hеadlights")).toBe("other");
+  });
+
+  it("still detects a genuinely mixed line by its dominant script", () => {
+    expect(detectScript("Baby 愛してる")).toBe("ja");
+    expect(detectScript("Привет baby")).toBe("ru");
+  });
+
+  it("detects a single-character line", () => {
+    expect(detectScript("愛")).toBe("zh");
+  });
+
+  it("returns other for text with no letters", () => {
+    expect(detectScript("!!! ??? 123")).toBe("other");
+  });
 });
 
 describe("annotate", () => {
@@ -42,6 +64,13 @@ describe("annotate", () => {
   it("returns empty for Latin text", async () => {
     const ann = await annotate("hello", ALL);
     expect(ann).toEqual({});
+  });
+
+  it("drops a transliteration that restates the original", async () => {
+    // Transliterating a homoglyph line yields the same English back; showing it
+    // as a romaji sub-line duplicates the lyric.
+    const ann = await annotate("Or “you’re dеad” lights", { ...ALL, auto: true });
+    expect(ann.romaji).toBeUndefined();
   });
 
   it("auto romanizes any non-Latin script with per-language flags off", async () => {
