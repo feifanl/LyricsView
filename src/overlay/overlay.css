@@ -59,6 +59,15 @@ body.faded .overlay-root {
   text-align: center;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  transition: opacity 260ms ease;
+}
+
+/* Nothing to show right now (intro, instrumental break, outro). The box has its
+   own background pill, so emptying the stack isn't enough — an empty pill would
+   hang on screen through every solo. Faded rather than hidden so it goes out
+   with the outgoing line instead of snapping away under it. */
+.lyrics.vacant {
+  opacity: 0;
 }
 
 .stack {
@@ -137,6 +146,16 @@ body.faded .overlay-root {
   gap: calc(var(--font-size) * 0.4);
   min-width: 0;
 }
+
+/* Stacked layout: each form on its own row, grouped tight (the stack's own gap
+   spaces the group from the prev/next context lines). */
+.forms-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--font-size) * 0.12);
+  min-width: 0;
+}
 /* With columns beside it, nothing may wrap: a squeezed lyric would fold onto a
    second row, and the fit would then pay for that height by shrinking the font
    instead of narrowing the columns. */
@@ -194,9 +213,12 @@ ruby rt {
   opacity: 0.35;
 }
 
-/* "no romaji/translation found" — quieter and smaller than a real sub-line, and
-   it fades out after a few seconds so it doesn't linger under every line. Rebuilt
-   per line change, so the animation restarts for each new current line. */
+/* "no romaji/translation found" — quieter and smaller than a real sub-line.
+   Its lifetime is owned by the renderer, which shows it on the track's first few
+   lines and then stops emitting the node entirely (see MISSING_NOTICE_LINES).
+   Deliberately not a CSS fade: the element is rebuilt on every line change, so a
+   fade would restart under each new line, and a faded-but-present node would
+   keep holding the box open at the width it needed. */
 .missing-line {
   font-size: calc(var(--sub-font-size) * 0.45);
   white-space: nowrap;
@@ -205,13 +227,6 @@ ruby rt {
   text-align: center;
   line-height: 1.1;
   font-style: italic;
-  animation: missing-fade 0.6s ease 3s forwards;
-}
-
-@keyframes missing-fade {
-  to {
-    opacity: 0;
-  }
 }
 
 .plain-block {

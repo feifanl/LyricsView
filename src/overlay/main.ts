@@ -15,11 +15,17 @@ import type { LyricsDoc, TrackInfo } from "../shared/types";
 import { applyPresetVars } from "./apply";
 import { configureAutoWidth, requestWidth } from "./autowidth";
 import { PlaybackClock } from "./clock";
+import { autoStretchPpm } from "./drift";
 import { initEditMode } from "./edit";
 import { restoreGeometry } from "./geometry";
 import { Renderer } from "./renderer";
-import { detectScript } from "./romanize";
 import { shareCard } from "./share";
+import {
+  baseLang,
+  docLang,
+  isRedundantTranslation,
+  needsTranslation,
+} from "./translation";
 
 const lyricsEl = document.getElementById("lyrics") as HTMLDivElement;
 const toastEl = document.getElementById("toast") as HTMLDivElement;
@@ -31,7 +37,11 @@ let currentTrack: TrackInfo | null = null;
 let currentDoc: LyricsDoc | null = null;
 let globalOffsetMs = 0;
 let trackOffsetMs = 0;
-let trackStretchPpm = 0; // per-track drift correction (parts-per-million)
+// Drift correction (parts-per-million of position) comes in two parts: one
+// derived from the duration gap between the playing release and the release the
+// lyrics were timed against, and one the user dialled in by hand. They add.
+let autoStretchPpmValue = 0;
+let userStretchPpm = 0;
 let trackKey: string | null = null;
 let toastTimer = 0;
 let showTranslation = false; // Original vs Translated view
@@ -59,8 +69,12 @@ function applyOffsets(): void {
 // Playback-position → lyric-time mapping. Drift correction rescales position so
 // a lyric timeline from a different release can be linearly aligned to the
 // audio: lyricTime = rate*audio + offset. rate == 1 (ppm 0) is a no-op.
+function stretchPpm(): number {
+  return autoStretchPpmValue + userStretchPpm;
+}
+
 function estimatePos(now: number): number {
-  const rate = 1 + trackStretchPpm / 1_000_000;
+  const rate = 1 + stretchPpm() / 1_000_000;
   const offset = globalOffsetMs + trackOffsetMs;
   return rate * clock.estimate(now) + offset * (1 - rate);
 }
@@ -144,6 +158,22 @@ async function shareCurrentLine(): Promise<void> {
   }
 }
 
+/** Whether two settings snapshots place the overlay window identically. */
+function sameGeometry(a: Settings | null, b: Settings): boolean {
+  if (!a) return false;
+  if (a.activePreset !== b.activePreset) return false;
+  const pa = activePreset(a);
+  const pb = activePreset(b);
+  return (
+    (pa.dock ?? "float") === (pb.dock ?? "float") &&
+    pa.monitor === pb.monitor &&
+    pa.size.w === pb.size.w &&
+    pa.size.h === pb.size.h &&
+    (pa.position?.x ?? null) === (pb.position?.x ?? null) &&
+    (pa.position?.y ?? null) === (pb.position?.y ?? null)
+  );
+}
+
 function applyLayout(settings: Settings): void {
   const p = activePreset(settings);
   renderer.setLayout({
@@ -153,7 +183,14 @@ function applyLayout(settings: Settings): void {
   });
   renderer.setRomanization(settings.romanization);
   renderer.setShowTranslation(settings.translation.show);
+  renderer.setLyricLines(settings.lyricLines);
 }
+
+const FORM_LABEL: Record<string, string> = {
+  romaji: "romaji",
+  original: "original",
+  translation: "translation",
+};
 
 function frame(): void {
   // Hold rendering until the clock has more than the first (often stale) SMTC
@@ -182,10 +219,10 @@ async function loadTrackMeta(): Promise<void> {
     trackKey = await cmd.currentTrackKey();
     const meta = trackKey ? await cmd.getTrackMeta(trackKey) : null;
     trackOffsetMs = meta?.offsetMs ?? 0;
-    trackStretchPpm = meta?.stretchPpm ?? 0;
+    userStretchPpm = meta?.stretchPpm ?? 0;
   } catch {
     trackOffsetMs = 0;
-    trackStretchPpm = 0;
+    userStretchPpm = 0;
   }
   applyOffsets();
 }
@@ -195,6 +232,7 @@ async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
   currentTrack = t;
   hasDoc = false;
   currentDoc = null;
+  autoStretchPpmValue = 0; // recomputed once we know which release was timed
   await loadTrackMeta();
   if (seq !== loadSeq) return;
   exitEmptyState(); // a fresh search supersedes any prior empty-state
@@ -203,6 +241,7 @@ async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
     const doc = await cmd.fetchLyrics(t, force);
     if (seq !== loadSeq) return; // a newer track superseded this fetch
     if (doc && doc.lines.length > 0) {
+      autoStretchPpmValue = autoStretchPpm(t.durationMs, doc.sourceDurationMs);
       gateTranslations(doc); // drop translations that don't match the target language
       currentDoc = doc;
       renderer.setDoc(doc); // replaces the status message
@@ -224,52 +263,13 @@ async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
   }
 }
 
-// A translation only makes sense when the original isn't already in the user's
-// target language. Detect the language of a piece of text via its script;
-// Latin script is assumed to be the (Latin-alphabet) target, so it collapses to
-// the target's base code — good enough to stop e.g. a Chinese tlyric showing
-// under an English song.
-function langOf(text: string): string {
-  const s = detectScript(text); // ja | zh | ko | ru | other
-  return s === "other" ? "latin" : s;
-}
-
-function baseLang(code: string): string {
-  const base = code.toLowerCase().split(/[-_]/)[0] ?? code.toLowerCase();
-  // Latin-script languages (en, es, fr, de, …) all read as "latin" from script
-  // detection, so map the target's code into that bucket to compare like-for-like.
-  return /^(en|es|fr|de|it|pt|nl|id|ms|vi|tr|pl)$/.test(base) ? "latin" : base;
-}
-
-/** Dominant original language across the doc's non-empty lines. */
-function docLang(doc: LyricsDoc): string {
-  const counts = new Map<string, number>();
-  for (const l of doc.lines) {
-    const t = l.text.trim();
-    if (!t) continue;
-    const lang = langOf(t);
-    counts.set(lang, (counts.get(lang) ?? 0) + 1);
-  }
-  let best = "latin";
-  let max = 0;
-  for (const [lang, n] of counts) {
-    if (n > max) {
-      max = n;
-      best = lang;
-    }
-  }
-  return best;
-}
-
-// Strip translations when the original is already in the target language — a
-// Chinese tlyric under an English song with an English target is noise. Any
-// other bundled translation is kept: for a foreign song (e.g. Korean, target
-// English) the provider's translation is the only one available, so showing it
-// beats showing nothing even if it isn't the exact target language. Mutates the
-// doc in place.
+// Strip translations that would add nothing, line by line: the line is already
+// in the target language, or the "translation" restates it. Doing this per line
+// rather than per document is what stops an English hook inside a Japanese song
+// from carrying an English "translation" of itself. Mutates the doc in place.
 function gateTranslations(doc: LyricsDoc): void {
-  if (docLang(doc) === baseLang(targetLang)) {
-    for (const l of doc.lines) l.translation = undefined;
+  for (const l of doc.lines) {
+    if (isRedundantTranslation(l.text, l.translation, targetLang)) l.translation = undefined;
   }
 }
 
@@ -278,16 +278,24 @@ function gateTranslations(doc: LyricsDoc): void {
 // translated view and configured a key.
 async function maybeTranslate(doc: LyricsDoc): Promise<void> {
   if (!showTranslation || doc.lines.length === 0) return;
-  if (docLang(doc) === baseLang(targetLang)) return; // original already in target
-  const missing = doc.lines.filter((l) => !l.translation);
+  if (docLang(doc.lines.map((l) => l.text)) === baseLang(targetLang)) return; // cheap early-out
+  // Lines already in the target language are skipped outright: asking a
+  // translator to render English as English gets the line back verbatim.
+  const missing = doc.lines.filter((l) => !l.translation && needsTranslation(l.text, targetLang));
   if (missing.length === 0) return; // built-in translations cover everything
   if (!aiEnabled) return; // no AI fallback configured — show what we have
   try {
     const filled = await cmd.translateLines(missing.map((l) => l.text));
     if (currentDoc !== doc) return;
-    // Merge AI results back, keeping every built-in translation as-is.
+    // Merge AI results back, keeping every built-in translation as-is. Lines
+    // that were skipped above stay blank, and an echoed result is dropped.
     let k = 0;
-    const merged = doc.lines.map((l) => l.translation ?? filled[k++] ?? "");
+    const merged = doc.lines.map((l) => {
+      if (l.translation) return l.translation;
+      if (!needsTranslation(l.text, targetLang)) return "";
+      const t = filled[k++] ?? "";
+      return isRedundantTranslation(l.text, t, targetLang) ? "" : t;
+    });
     renderer.setTranslations(merged);
   } catch (e) {
     console.error("[overlay] translate failed", e);
@@ -308,14 +316,17 @@ function nudgeOffset(deltaMs: number): void {
 const DRIFT_STEP_PPM = 500; // ~0.05% per press ≈ 90 ms over a 3-min song
 
 async function persistStretch(): Promise<void> {
-  if (trackKey) await cmd.setTrackStretch(trackKey, trackStretchPpm);
+  if (trackKey) await cmd.setTrackStretch(trackKey, userStretchPpm);
 }
 
+// Only the manual half is nudged and persisted; the automatic half is re-derived
+// on every load. So a nudge trims whatever the duration ratio got wrong rather
+// than replacing it, and the toast reports the total actually in effect.
 function nudgeDrift(deltaPpm: number): void {
-  trackStretchPpm += deltaPpm;
+  userStretchPpm += deltaPpm;
   void persistStretch();
-  const pct = (trackStretchPpm / 10_000).toFixed(2); // 10 000 ppm = 1%
-  toast(`drift ${trackStretchPpm >= 0 ? "+" : ""}${pct}%`);
+  const pct = (stretchPpm() / 10_000).toFixed(2); // 10 000 ppm = 1%
+  toast(`drift ${stretchPpm() >= 0 ? "+" : ""}${pct}%`);
 }
 
 function jumpLine(dir: -1 | 1): void {
@@ -358,9 +369,22 @@ function handleHotkey(action: HotkeyAction): void {
     case "reloadLyrics":
       if (currentTrack) void loadLyrics(currentTrack, true);
       break;
+    case "cycleFormPrev":
+      cycleForm(-1);
+      break;
+    case "cycleFormNext":
+      cycleForm(1);
+      break;
     default:
       break; // toggleOverlay / toggleEditMode handled in Rust
   }
+}
+
+// Single-line layout: hop between romaji / original / translation.
+function cycleForm(dir: 1 | -1): void {
+  const form = renderer.cycleForm(dir);
+  if (form) toast(FORM_LABEL[form] ?? form);
+  else toast("single-line layout only");
 }
 
 async function boot(): Promise<void> {
@@ -414,6 +438,7 @@ async function boot(): Promise<void> {
     if (currentTrack) void loadLyrics(currentTrack, true);
   });
   await onSettingsChanged((s) => {
+    const geometryChanged = !sameGeometry(currentSettings, s);
     currentSettings = s;
     globalOffsetMs = s.globalOffsetMs;
     showTranslation = s.translation.show;
@@ -426,8 +451,13 @@ async function boot(): Promise<void> {
     applyOffsets();
     applyPresetVars(s);
     applyLayout(s);
-    // Re-dock / re-place live when the preset or dock mode changes.
-    void restoreGeometry(activePreset(s)).then(() => configureAutoWidth(s));
+    // Re-dock / re-place only when the geometry itself changed. Doing it on
+    // every broadcast fought the user: each keystroke in the settings window
+    // snapped the overlay back to the preset's saved rectangle, undoing a drag
+    // and re-triggering the auto-width resize loop.
+    if (geometryChanged) {
+      void restoreGeometry(activePreset(s)).then(() => configureAutoWidth(s));
+    }
     // Target-language change re-gates translations from a fresh (cached) fetch:
     // gating strips them destructively, so we can't restore from currentDoc.
     if (langChanged && currentTrack) void loadLyrics(currentTrack, false);

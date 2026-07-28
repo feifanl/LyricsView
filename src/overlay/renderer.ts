@@ -1,10 +1,12 @@
 // Karaoke renderer: line stack (prev/current/next context) + progressive word
 // fill, with optional romanization sub-lines and Japanese furigana. Per-frame
 // style writes are limited to the active word for smoothness.
-import type { AnimationStyle, RomanizationCfg } from "../shared/settings";
+import type { AnimationStyle, LyricForm, LyricLinesCfg, RomanizationCfg } from "../shared/settings";
+import { DEFAULT_LYRIC_LINES } from "../shared/settings";
 import type { LyricsDoc, LyricLine, LyricWord } from "../shared/types";
 import { synthesizeWords } from "./interpolate";
 import { annotate, expectsRomaji, romanizationActive } from "./romanize";
+import { lineIndexAt, type LineSpan } from "./timeline";
 
 interface PreparedLine {
   line: LyricLine;
@@ -22,6 +24,12 @@ export interface RenderLayout {
 
 const NO_ROMANIZATION: RomanizationCfg = { auto: false, ja: false, jaFurigana: false, zh: false, ko: false, ru: false };
 
+/** How many lines a "no romaji found" notice appears on before it gives up for
+ *  the rest of the track. The information is about the track, not the line, so
+ *  repeating it under every line is noise — but saying it once is easy to miss.
+ *  Removing the node (rather than fading it) lets the box shrink back. */
+const MISSING_NOTICE_LINES = 3;
+
 /** Split a provider translation that leads with a bracketed transliteration
  *  ("【romaji】 english" or "[romaji] english") into the two parts. Returns the
  *  whole string as `text` when there's no such prefix (or no trailing text). */
@@ -31,10 +39,35 @@ function splitTranslation(t: string): { roman?: string; text: string } {
   return { text: t };
 }
 
+function sameRomanization(a: RomanizationCfg, b: RomanizationCfg): boolean {
+  return (
+    a.auto === b.auto &&
+    a.ja === b.ja &&
+    a.jaFurigana === b.jaFurigana &&
+    a.zh === b.zh &&
+    a.ko === b.ko &&
+    a.ru === b.ru
+  );
+}
+
+function sameLyricLines(a: LyricLinesCfg, b: LyricLinesCfg): boolean {
+  return (
+    a.layout === b.layout &&
+    a.order.length === b.order.length &&
+    a.order.every((f, i) => f === b.order[i]) &&
+    a.order.every((f) => a.enabled[f] === b.enabled[f])
+  );
+}
+
 export class Renderer {
   private prepared: PreparedLine[] = [];
   private plain: string | null = null;
   private currentIdx = -1;
+  /** Set when the stack must be rebuilt even though the line hasn't changed
+   *  (translations arrived, romanization finished, a form/layout setting moved).
+   *  Kept separate from `currentIdx` so a same-line rebuild stays distinguishable
+   *  from a line change: crossfading a line against itself renders it twice. */
+  private dirty = false;
   private wordSpans: HTMLElement[] = [];
   private prevActive = -1;
   private layout: RenderLayout = { before: 1, after: 1, animation: "fill" };
@@ -42,7 +75,20 @@ export class Renderer {
   private annVersion = 0;
   private currentWrapper: HTMLElement | null = null;
   private showTranslation = false;
+  private lyricLines: LyricLinesCfg = {
+    order: [...DEFAULT_LYRIC_LINES.order],
+    enabled: { ...DEFAULT_LYRIC_LINES.enabled },
+    layout: DEFAULT_LYRIC_LINES.layout,
+  };
+  /** Which form "single" layout shows. Held as the form itself, not an index:
+   *  the built items skip forms with no content on the current line, so an index
+   *  into them means a different form from one line to the next. */
+  private activeForm: LyricForm | null = null;
   private fitQueued = false;
+  /** Lines the "no romaji found" notice has already been shown on, this track. */
+  private missingNoticeLines = new Set<number>();
+  /** Line start/end times, cached for the per-frame lookup in `render`. */
+  private lineSpans: LineSpan[] = [];
 
   /** Reports, after every fit, how wide the current row wants to be and how much
    *  width it was given (CSS px). Lets the host widen the overlay window instead
@@ -174,13 +220,37 @@ export class Renderer {
     return scale;
   }
 
+  // The settings window broadcasts on every keystroke and slider tick, so each
+  // of these setters can fire dozens of times a second while the user is just
+  // dragging a colour. They must all be no-ops when nothing actually changed:
+  // a forced rebuild costs a synchronous re-fit, and re-romanizing costs a full
+  // pass over the document — enough, repeated, to lock the overlay up.
   setLayout(layout: RenderLayout): void {
+    if (
+      layout.before === this.layout.before &&
+      layout.after === this.layout.after &&
+      layout.animation === this.layout.animation
+    ) {
+      return;
+    }
     this.layout = layout;
-    this.currentIdx = -1; // force rebuild with new context counts
+    this.dirty = true; // rebuild with new context counts
   }
 
   setRomanization(cfg: RomanizationCfg): void {
+    if (sameRomanization(cfg, this.romanization)) return;
     this.romanization = cfg;
+    if (!romanizationActive(cfg)) {
+      // Turning romanization off has to drop what a previous pass produced,
+      // otherwise stale romaji/furigana stays on screen until the next track.
+      for (const p of this.prepared) {
+        p.romaji = undefined;
+        p.furiganaHtml = undefined;
+      }
+      this.annVersion += 1; // cancel any pass still running
+      this.dirty = true;
+      return;
+    }
     void this.annotateAll();
   }
 
@@ -188,23 +258,62 @@ export class Renderer {
   setShowTranslation(show: boolean): void {
     if (show === this.showTranslation) return;
     this.showTranslation = show;
-    this.currentIdx = -1; // rebuild the stack to add/remove the sub-line
+    this.dirty = true; // rebuild the stack to add/remove the sub-line
+  }
+
+  /** Which forms show, in what order, and the layout. */
+  setLyricLines(cfg: LyricLinesCfg): void {
+    if (sameLyricLines(cfg, this.lyricLines)) return;
+    this.lyricLines = {
+      order: [...cfg.order],
+      enabled: { ...cfg.enabled },
+      layout: cfg.layout,
+    };
+    // Drop a selection the user has since disabled.
+    if (this.activeForm && !this.lyricLines.enabled[this.activeForm]) this.activeForm = null;
+    this.dirty = true; // rebuild with the new form set / layout
+  }
+
+  /** Cycle which single form shows (only meaningful in "single" layout). Returns
+   *  the newly-selected form, or null when cycling doesn't apply. */
+  cycleForm(dir: 1 | -1): LyricForm | null {
+    if (this.lyricLines.layout !== "single") return null;
+    const forms = this.visibleForms();
+    if (forms.length < 2) return null;
+    const cur = this.activeForm ? forms.indexOf(this.activeForm) : 0;
+    this.activeForm = forms[(Math.max(0, cur) + dir + forms.length) % forms.length]!;
+    this.dirty = true; // rebuild to swap the shown form
+    return this.activeForm;
+  }
+
+  /** Forms that are enabled, in display order (ignores per-line content). */
+  private visibleForms(): LyricForm[] {
+    return this.lyricLines.order.filter((f) => this.lyricLines.enabled[f]);
   }
 
   setDoc(doc: LyricsDoc | null): void {
     this.currentIdx = -1;
+    this.dirty = false;
     this.wordSpans = [];
     this.prevActive = -1;
     this.annVersion += 1;
     this.container.innerHTML = "";
     this.currentWrapper = null;
+    this.setVacant(true); // until the first line (or the plain note) is built
+    this.missingNoticeLines.clear(); // notices are budgeted per track
     if (!doc || doc.lines.length === 0) {
       this.prepared = [];
+      this.lineSpans = [];
       this.plain = doc?.plain ?? null;
       this.renderPlain();
       return;
     }
     this.plain = null;
+    this.lineSpans = doc.lines.map((l) => ({
+      start: l.start,
+      end: l.end,
+      chars: l.text.trim().length,
+    }));
     this.prepared = doc.lines.map((line) => ({
       line,
       words:
@@ -221,12 +330,15 @@ export class Renderer {
    *  styled like a line so it aligns with the overlay chrome. */
   setMessage(text: string | null): void {
     this.currentIdx = -1;
+    this.dirty = false;
     this.prepared = [];
+    this.lineSpans = [];
     this.plain = null;
     this.wordSpans = [];
     this.currentWrapper = null;
     this.annVersion += 1;
     this.container.innerHTML = "";
+    this.setVacant(!text);
     if (text) {
       const wrapper = document.createElement("div");
       wrapper.className = "stack mounted";
@@ -246,7 +358,7 @@ export class Renderer {
       const t = translations[i];
       if (t) this.prepared[i]!.translation = t;
     }
-    this.currentIdx = -1; // rebuild to show translations
+    this.dirty = true; // rebuild to show translations
   }
 
   /** Lazily romanize every line, then force a rebuild so sub-lines appear. */
@@ -260,48 +372,39 @@ export class Renderer {
       p.romaji = ann.romaji;
       p.furiganaHtml = ann.furiganaHtml;
     }
-    this.currentIdx = -1; // rebuild to show romanization
+    this.dirty = true; // rebuild to show romanization
   }
 
   /** Update the view for playback position `pos` (ms). */
   render(pos: number): void {
     if (this.prepared.length === 0) return;
-    const idx = this.lineIndexAt(pos);
-    if (idx !== this.currentIdx) {
+    // Cached rather than mapped per frame — this runs on every animation frame.
+    const idx = lineIndexAt(this.lineSpans, pos);
+    if (idx !== this.currentIdx || this.dirty) {
+      const sameLine = idx === this.currentIdx;
       this.currentIdx = idx;
+      this.dirty = false;
       if (idx < 0) this.clearStack();
-      else this.rebuildStack(idx);
+      else this.rebuildStack(idx, sameLine);
     }
     if (idx < 0) return;
     if (this.layout.animation === "fill") this.updateFill(pos);
     else if (this.layout.animation === "spotlight") this.updateSpotlight(pos);
   }
 
-  private lineIndexAt(pos: number): number {
-    // Before the first line starts (long intro), show nothing — otherwise the
-    // first line would appear during the whole pre-roll.
-    if (this.prepared.length === 0 || pos < this.prepared[0]!.line.start) return -1;
-    let lo = 0;
-    let hi = this.prepared.length - 1;
-    let found = 0;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      if (this.prepared[mid]!.line.start <= pos) {
-        found = mid;
-        lo = mid + 1;
-      } else {
-        hi = mid - 1;
-      }
-    }
-    return found;
-  }
-
-  /** Fade out the current stack, leaving the box empty (intro pre-roll). */
+  /** Fade out the current stack, leaving the box empty (intro, instrumental
+   *  break, outro). */
   private clearStack(): void {
     this.wordSpans = [];
     this.prevActive = -1;
     if (this.currentWrapper) this.fadeOut(this.currentWrapper);
     this.currentWrapper = null;
+    this.setVacant(true);
+  }
+
+  /** Fade the whole box (background pill included) in or out. */
+  private setVacant(on: boolean): void {
+    this.container.classList.toggle("vacant", on);
   }
 
   private renderPlain(): void {
@@ -317,10 +420,13 @@ export class Renderer {
     wrapper.appendChild(line);
     this.container.appendChild(wrapper);
     this.currentWrapper = wrapper;
+    this.setVacant(false);
     this.fit();
   }
 
-  private rebuildStack(idx: number): void {
+  /** `sameLine` = re-rendering the line already on screen (new translation,
+   *  romanization or form setting) rather than advancing to the next one. */
+  private rebuildStack(idx: number, sameLine = false): void {
     this.wordSpans = [];
     this.prevActive = -1;
 
@@ -340,39 +446,48 @@ export class Renderer {
     const end = Math.min(this.prepared.length - 1, idx + this.layout.after);
     for (let i = start; i <= end; i++) {
       const p = this.prepared[i]!;
-      const el = document.createElement("div");
-      el.className = i === idx ? "lyric-line current" : "lyric-line context";
-      this.buildLine(el, p, i === idx);
       if (i !== idx) {
         // Romaji/translation hang off the CURRENT line only; on the faint
         // prev/next context lines they'd just add noise.
+        const el = document.createElement("div");
+        el.className = "lyric-line context";
+        this.buildLine(el, p, false);
         wrapper.appendChild(el);
         continue;
       }
-      // Romaji | original | translation all share ONE row, so the stack never
-      // grows taller and the auto-fit has no reason to shrink the font.
-      const row = document.createElement("div");
-      row.className = "sub-row";
-      this.buildCurrentRow(row, p, el);
-      wrapper.appendChild(row);
+      this.buildCurrentForms(wrapper, p, idx);
     }
 
-    // Pin the outgoing stack before refitting, so the fit below only resizes the
-    // incoming one.
-    if (this.currentWrapper) this.fadeOut(this.currentWrapper);
+    // A crossfade only makes sense between two different lines. Fading a line
+    // against a fresh copy of itself just shows the same text twice — once dim
+    // and pinned at the old size, once live — which reads as a doubled lyric.
+    // Same line: swap instantly, already mounted so it doesn't fade in either.
+    if (sameLine) {
+      this.currentWrapper?.remove();
+      wrapper.classList.add("mounted");
+    } else if (this.currentWrapper) {
+      // Pin the outgoing stack before refitting, so the fit below only resizes
+      // the incoming one.
+      this.fadeOut(this.currentWrapper);
+    }
     this.currentWrapper = wrapper;
 
     this.container.appendChild(wrapper);
+    this.setVacant(false);
     // Fit synchronously: at rAF the new stack would already have been painted
     // once at the previous line's size, which is the flash.
     this.fit();
-    requestAnimationFrame(() => wrapper.classList.add("mounted"));
+    if (!sameLine) requestAnimationFrame(() => wrapper.classList.add("mounted"));
   }
 
-  /** Lay the current line out as romaji | original | translation. Romaji falls
-   *  back to a small "not found" note (romanization is on, so silence there
-   *  reads as a bug); a missing translation just leaves the slot empty. */
-  private buildCurrentRow(row: HTMLElement, p: PreparedLine, lineEl: HTMLElement): void {
+  /** Build the current line's forms (romaji / original / translation) in the
+   *  user's chosen order and layout, appending row(s) to the stack wrapper:
+   *   - inline:  all forms on one row (never grows the stack taller).
+   *   - stacked: each form on its own row (bulkier, wraps less).
+   *   - single:  just one form, chosen by the hotkey-driven active form. */
+  private buildCurrentForms(wrapper: HTMLElement, p: PreparedLine, idx: number): void {
+    this.wordSpans = [];
+
     let romaji = p.romaji;
     let translation: string | undefined;
     if (p.translation && this.showTranslation) {
@@ -384,25 +499,92 @@ export class Renderer {
       translation = text;
     }
 
-    if (romaji) this.appendSubItem(row, romaji, "romaji-line");
-    else if (!p.furiganaHtml && expectsRomaji(p.line.text, this.romanization)) {
-      // Only when the line's own script should have romanized (a real miss) —
-      // never for English/Latin lines, which never produce romaji.
-      this.appendSubItem(row, "no romaji found", "missing-line");
+    // Build a node for each enabled form that has content, in configured order.
+    // Original is the karaoke line (word spans / furigana); the others are text.
+    // Keyed by form as well as ordered: "single" layout has to pick the node for
+    // a specific form, and a plain index would land on whatever survived the
+    // content checks on this particular line.
+    const byForm = new Map<LyricForm, HTMLElement>();
+    const items: HTMLElement[] = [];
+    const add = (form: LyricForm, el: HTMLElement): void => {
+      byForm.set(form, el);
+      items.push(el);
+    };
+    for (const form of this.lyricLines.order) {
+      if (!this.lyricLines.enabled[form]) continue;
+      if (form === "original") {
+        const el = document.createElement("div");
+        el.className = "lyric-line current";
+        this.buildLine(el, p, true); // populates this.wordSpans
+        add(form, el);
+      } else if (form === "romaji") {
+        if (romaji) add(form, this.subItem(romaji, "romaji-line"));
+        else if (
+          !p.furiganaHtml &&
+          expectsRomaji(p.line.text, this.romanization) &&
+          this.allowMissingNotice(idx)
+        ) {
+          // Only when the line's own script should have romanized (a real miss).
+          add(form, this.subItem("no romaji found", "missing-line"));
+        }
+      } else if (form === "translation") {
+        if (translation) add(form, this.subItem(translation, "trans-line"));
+      }
+    }
+    // Never show a totally empty box: fall back to the original line.
+    if (items.length === 0) {
+      const el = document.createElement("div");
+      el.className = "lyric-line current";
+      this.buildLine(el, p, true);
+      add("original", el);
     }
 
-    row.appendChild(lineEl);
+    if (this.lyricLines.layout === "stacked") {
+      // Group the form rows so the stack's line gap applies once (around the
+      // group), and the forms themselves sit tight together.
+      const group = document.createElement("div");
+      group.className = "forms-stack";
+      for (const node of items) {
+        const row = document.createElement("div");
+        row.className = "sub-row stacked-row";
+        row.appendChild(node);
+        group.appendChild(row);
+      }
+      wrapper.appendChild(group);
+      return;
+    }
 
-    if (translation) this.appendSubItem(row, translation, "trans-line");
-    // Marks the row as multi-column so nothing in it wraps (see overlay.css).
-    if (row.childElementCount > 1) row.classList.add("has-sides");
+    const row = document.createElement("div");
+    row.className = "sub-row";
+    if (this.lyricLines.layout === "single") {
+      // Falling back when the chosen form has nothing on this line must not
+      // change the selection — otherwise one line without a translation would
+      // silently switch the user onto the original for the rest of the song.
+      const chosen = (this.activeForm && byForm.get(this.activeForm)) || items[0]!;
+      row.appendChild(chosen);
+    } else {
+      for (const node of items) row.appendChild(node);
+      // Marks the row as multi-column so nothing in it wraps (see overlay.css).
+      if (items.length > 1) row.classList.add("has-sides");
+    }
+    wrapper.appendChild(row);
   }
 
-  private appendSubItem(parent: HTMLElement, text: string, cls: string): void {
+  /** Whether line `idx` may carry a "missing" notice. The budget counts distinct
+   *  lines, not renders, so re-rendering the same line (a settings change, a
+   *  romanization pass finishing) never spends it. */
+  private allowMissingNotice(idx: number): boolean {
+    if (this.missingNoticeLines.has(idx)) return true;
+    if (this.missingNoticeLines.size >= MISSING_NOTICE_LINES) return false;
+    this.missingNoticeLines.add(idx);
+    return true;
+  }
+
+  private subItem(text: string, cls: string): HTMLElement {
     const el = document.createElement("div");
     el.className = `${cls} current`;
     el.textContent = text;
-    parent.appendChild(el);
+    return el;
   }
 
   private buildLine(el: HTMLElement, p: PreparedLine, isCurrent: boolean): void {
