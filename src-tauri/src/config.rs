@@ -87,21 +87,41 @@ pub struct ProviderSettings {
     pub hotkeys: HashMap<String, String>,
 }
 
+/// Fallback accelerators, used for any action the saved settings don't mention.
+///
+/// Must list every `HotkeyAction`. An action missing here is never registered on
+/// a fresh install — the settings file only carries what the UI has written, so
+/// a gap is invisible on a developer machine whose config predates the action.
+/// `hotkeys::tests::defaults_cover_every_action` fails if this falls behind.
 fn default_hotkeys() -> HashMap<String, String> {
     [
         ("toggleOverlay", "Alt+Shift+L"),
         ("toggleEditMode", "Alt+Shift+E"),
         ("offsetMinus", "Alt+Shift+["),
         ("offsetPlus", "Alt+Shift+]"),
+        ("driftMinus", "Alt+Shift+,"),
+        ("driftPlus", "Alt+Shift+."),
         ("prevLine", "Alt+Shift+Left"),
         ("nextLine", "Alt+Shift+Right"),
         ("reloadLyrics", "Alt+Shift+R"),
         ("cycleFormPrev", "Alt+Shift+Up"),
         ("cycleFormNext", "Alt+Shift+Down"),
+        ("syncMark", "Alt+Shift+S"),
+        ("resetSync", "Alt+Shift+0"),
     ]
     .iter()
     .map(|(k, v)| (k.to_string(), v.to_string()))
     .collect()
+}
+
+#[cfg(test)]
+pub(crate) fn default_hotkey_ids() -> Vec<String> {
+    default_hotkeys().into_keys().collect()
+}
+
+#[cfg(test)]
+pub(crate) fn default_hotkey_pairs() -> Vec<(String, String)> {
+    default_hotkeys().into_iter().collect()
 }
 
 impl Default for ProviderSettings {

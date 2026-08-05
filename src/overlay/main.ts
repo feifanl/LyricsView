@@ -14,6 +14,14 @@ import {
 import type { LyricsDoc, TrackInfo } from "../shared/types";
 import { applyPresetVars } from "./apply";
 import { configureAutoWidth, requestWidth } from "./autowidth";
+import {
+  MIN_SPREAD_MS,
+  type SyncMark,
+  clampStretch,
+  fit,
+  spreadMs,
+  worstResidualMs,
+} from "./calibrate";
 import { PlaybackClock } from "./clock";
 // Sync diagnostic. Dev-only: every call site sits behind `import.meta.env.DEV`,
 // which Vite replaces with a literal `false` in a production build, so the whole
@@ -295,14 +303,25 @@ async function maybeTranslate(doc: LyricsDoc): Promise<void> {
   }
 }
 
-async function persistOffset(): Promise<void> {
-  if (trackKey) await cmd.setTrackOffset(trackKey, trackOffsetMs);
+// Corrections are written on a timer rather than per keypress: a held hotkey
+// fires tens of times a second, and each write is an IPC round trip plus a file
+// rewrite. The last value within the window is the one that matters.
+const PERSIST_DEBOUNCE_MS = 500;
+let persistTimer = 0;
+
+function schedulePersist(): void {
+  window.clearTimeout(persistTimer);
+  persistTimer = window.setTimeout(() => {
+    if (!trackKey) return;
+    void cmd.setTrackOffset(trackKey, trackOffsetMs);
+    void cmd.setTrackStretch(trackKey, trackStretchPpm);
+  }, PERSIST_DEBOUNCE_MS);
 }
 
 function nudgeOffset(deltaMs: number): void {
   trackOffsetMs += deltaMs;
   applyOffsets();
-  void persistOffset();
+  schedulePersist();
   toast(`offset ${trackOffsetMs >= 0 ? "+" : ""}${trackOffsetMs} ms`);
 }
 
@@ -312,15 +331,82 @@ function nudgeOffset(deltaMs: number): void {
  *  same correction is 4–16 presses, still fine enough not to overshoot. */
 const DRIFT_STEP_PPM = 2500;
 
-async function persistStretch(): Promise<void> {
-  if (trackKey) await cmd.setTrackStretch(trackKey, trackStretchPpm);
-}
-
 function nudgeDrift(deltaPpm: number): void {
-  trackStretchPpm += deltaPpm;
-  void persistStretch();
+  const next = clampStretch(trackStretchPpm + deltaPpm);
+  if (next === trackStretchPpm) {
+    toast(`drift at limit ${(next / 10_000).toFixed(2)}%`);
+    return;
+  }
+  trackStretchPpm = next;
+  schedulePersist();
   const pct = (trackStretchPpm / 10_000).toFixed(2); // 10 000 ppm = 1%
   toast(`drift ${trackStretchPpm >= 0 ? "+" : ""}${pct}%`);
+}
+
+// --- Two-point sync calibration (see calibrate.ts) -------------------------
+
+/** Marks for the current track. Cleared on track change and on reset. */
+let syncMarks: SyncMark[] = [];
+
+/** Raw playback position, before offset and stretch — the frame marks live in,
+ *  so earlier marks stay valid as the correction changes under them. */
+function rawPos(): number {
+  return clock.estimate(Date.now()) - clock.getUserOffset();
+}
+
+/**
+ * Tap once as a line begins. The line currently on screen is taken as the one
+ * the user means, so a badly misaligned track wants a line jump first to get
+ * onto the right line. One mark shifts the offset; a second, far enough away,
+ * also solves the rate.
+ */
+function markSync(): void {
+  if (!currentDoc || currentDoc.lines.length === 0) {
+    toast("no lyrics to sync");
+    return;
+  }
+  const pos = estimatePos(Date.now());
+  let idx = 0;
+  for (let i = 0; i < currentDoc.lines.length; i++) {
+    if (currentDoc.lines[i]!.start <= pos) idx = i;
+    else break;
+  }
+  syncMarks.push({ rawMs: rawPos(), truthMs: currentDoc.lines[idx]!.start });
+
+  const c = fit(syncMarks, trackStretchPpm);
+  if (!c) return;
+  trackStretchPpm = c.stretchPpm;
+  trackOffsetMs = c.offsetMs - globalOffsetMs;
+  applyOffsets();
+  schedulePersist();
+
+  if (syncMarks.length === 1) {
+    toast("sync 1 — tap again later in the song");
+    return;
+  }
+  if (spreadMs(syncMarks) < MIN_SPREAD_MS) {
+    toast(`sync ${syncMarks.length} — offset only, tap further apart for drift`);
+    return;
+  }
+  // A mark far off the fitted line means one tap did not describe the same
+  // straight relationship as the others — a missed pause, or the wrong line.
+  const worst = worstResidualMs(syncMarks, c);
+  const pct = (c.stretchPpm / 10_000).toFixed(2);
+  toast(
+    worst > 1500
+      ? `sync ${syncMarks.length} — marks disagree, retap`
+      : `synced: drift ${c.stretchPpm >= 0 ? "+" : ""}${pct}%, offset ${c.offsetMs} ms`,
+  );
+}
+
+/** Throw away every correction for this track and start clean. */
+function resetSync(): void {
+  syncMarks = [];
+  trackOffsetMs = 0;
+  trackStretchPpm = 0;
+  applyOffsets();
+  schedulePersist();
+  toast("sync reset");
 }
 
 function jumpLine(dir: -1 | 1): void {
@@ -336,7 +422,7 @@ function jumpLine(dir: -1 | 1): void {
   // Shift offset so the chosen line starts "now".
   trackOffsetMs += targetStart - pos;
   applyOffsets();
-  void persistOffset();
+  schedulePersist();
   toast(dir > 0 ? "→ next line" : "← prev line");
 }
 
@@ -368,6 +454,12 @@ function handleHotkey(action: HotkeyAction): void {
       break;
     case "cycleFormNext":
       cycleForm(1);
+      break;
+    case "syncMark":
+      markSync();
+      break;
+    case "resetSync":
+      resetSync();
       break;
     default:
       break; // toggleOverlay / toggleEditMode handled in Rust
@@ -406,8 +498,7 @@ async function boot(): Promise<void> {
         trackStretchPpm = stretchPpm;
         trackOffsetMs = offsetMs - globalOffsetMs;
         applyOffsets();
-        void persistStretch();
-        void persistOffset();
+        schedulePersist();
         toast(`drift ${(stretchPpm / 10_000).toFixed(2)}% / offset ${trackOffsetMs} ms`);
       },
     });
@@ -422,6 +513,7 @@ async function boot(): Promise<void> {
     exitEmptyState(); // new song: clear any lingering empty-state fade
     setFaded(false); // a new track means we're active
     clock.reset(); // don't carry the previous song's position/anchor
+    syncMarks = []; // marks describe one song's timeline, never the next one's
     if (import.meta.env.DEV) diag.reset();
     lastTimelinePos = -1;
     trackChangedAt = Date.now();
@@ -496,6 +588,7 @@ async function seedCurrentTrack(): Promise<void> {
       if (existing) {
         setFaded(false);
         clock.reset();
+        syncMarks = [];
         lastTimelinePos = -1;
         trackChangedAt = Date.now();
         // The clock starts paused and only learns otherwise from a playback-state

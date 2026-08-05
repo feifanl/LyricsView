@@ -110,6 +110,8 @@ cached. NetEase's bundled translation (`tlyric`) is shown for free when availabl
 | Jump to previous line | `Alt+Shift+←` |
 | Jump to next line | `Alt+Shift+→` |
 | Cycle lyric form (prev / next) | `Alt+Shift+↑` / `Alt+Shift+↓` |
+| Sync: tap as a line starts | `Alt+Shift+S` |
+| Sync: reset this track | `Alt+Shift+0` |
 | Reload lyrics (bypass cache) | `Alt+Shift+R` |
 
 ## Known limitations
@@ -126,8 +128,9 @@ cached. NetEase's bundled translation (`tlyric`) is shown for free when availabl
   its position the clock free-runs from a single anchor, so a stale anchor offsets the
   whole song. Per-track offset correction exists for this.
 - A lyrics file may be timed to a different release than the one you are playing. The
-  symptom is drift that grows linearly through the song; per-track drift correction
-  fixes it.
+  symptom is drift that grows linearly through the song. Tap `Alt+Shift+S` as a line
+  begins, then again a minute or more later, and the correction is solved from the two
+  taps. `Alt+Shift+0` clears it.
 
 ## Legal
 

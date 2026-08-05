@@ -17,6 +17,8 @@ const ACTIONS: { id: HotkeyAction; label: string }[] = [
   { id: "reloadLyrics", label: "Reload lyrics" },
   { id: "cycleFormPrev", label: "Previous form (single-line layout)" },
   { id: "cycleFormNext", label: "Next form (single-line layout)" },
+  { id: "syncMark", label: "Sync: tap as a line starts (twice, far apart)" },
+  { id: "resetSync", label: "Sync: reset this track" },
 ];
 
 const ARROWS: Record<string, string> = {

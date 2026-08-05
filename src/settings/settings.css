@@ -560,6 +560,10 @@ table.grid td {
 }
 .lp-word {
   display: inline-block;
+  /* Each word carries its own trailing space, and an inline-block drops trailing
+     whitespace from its line box — without this the preview reads as one run-on
+     word. The overlay is unaffected: its words are plain inline spans. */
+  white-space: pre;
   /* Same feathered sweep as the real overlay. */
   background-image: linear-gradient(90deg, var(--lp-fill) calc(var(--p, 0) * 104% - 4%), var(--lp-base) calc(var(--p, 0) * 104%));
   -webkit-background-clip: text;

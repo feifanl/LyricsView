@@ -11,7 +11,9 @@ export type HotkeyAction =
   | "nextLine"
   | "reloadLyrics"
   | "cycleFormPrev"
-  | "cycleFormNext";
+  | "cycleFormNext"
+  | "syncMark"
+  | "resetSync";
 
 /** The three renderable forms of a lyric line. */
 export type LyricForm = "romaji" | "original" | "translation";
@@ -137,6 +139,8 @@ export const DEFAULT_HOTKEYS: Record<HotkeyAction, string> = {
   reloadLyrics: "Alt+Shift+R",
   cycleFormPrev: "Alt+Shift+Up",
   cycleFormNext: "Alt+Shift+Down",
+  syncMark: "Alt+Shift+S",
+  resetSync: "Alt+Shift+0",
 };
 
 function gamingPreset(): Preset {

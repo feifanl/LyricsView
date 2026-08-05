@@ -27,6 +27,8 @@ pub enum HotkeyAction {
     ReloadLyrics,
     CycleFormPrev,
     CycleFormNext,
+    SyncMark,
+    ResetSync,
 }
 
 impl HotkeyAction {
@@ -43,8 +45,77 @@ impl HotkeyAction {
             "reloadLyrics" => Self::ReloadLyrics,
             "cycleFormPrev" => Self::CycleFormPrev,
             "cycleFormNext" => Self::CycleFormNext,
+            "syncMark" => Self::SyncMark,
+            "resetSync" => Self::ResetSync,
             _ => return None,
         })
+    }
+
+    /// Every action, so tests can check nothing is missing a default binding.
+    #[cfg(test)]
+    const ALL: [(&'static str, Self); 13] = [
+        ("toggleOverlay", Self::ToggleOverlay),
+        ("toggleEditMode", Self::ToggleEditMode),
+        ("offsetMinus", Self::OffsetMinus),
+        ("offsetPlus", Self::OffsetPlus),
+        ("driftMinus", Self::DriftMinus),
+        ("driftPlus", Self::DriftPlus),
+        ("prevLine", Self::PrevLine),
+        ("nextLine", Self::NextLine),
+        ("reloadLyrics", Self::ReloadLyrics),
+        ("cycleFormPrev", Self::CycleFormPrev),
+        ("cycleFormNext", Self::CycleFormNext),
+        ("syncMark", Self::SyncMark),
+        ("resetSync", Self::ResetSync),
+    ];
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An action with no default binding is dead on any install whose settings
+    /// file predates it — which is every fresh install. This has silently
+    /// shipped twice (the drift keys, then the sync keys).
+    #[test]
+    fn defaults_cover_every_action() {
+        let ids = crate::config::default_hotkey_ids();
+        for (id, _) in HotkeyAction::ALL {
+            assert!(
+                ids.iter().any(|k| k == id),
+                "`{id}` has no entry in config::default_hotkeys()"
+            );
+        }
+    }
+
+    #[test]
+    fn every_default_id_maps_to_an_action() {
+        for id in crate::config::default_hotkey_ids() {
+            assert!(
+                HotkeyAction::from_id(&id).is_some(),
+                "default_hotkeys() lists unknown action `{id}`"
+            );
+        }
+    }
+
+    #[test]
+    fn from_id_round_trips_every_action() {
+        for (id, action) in HotkeyAction::ALL {
+            assert_eq!(HotkeyAction::from_id(id), Some(action));
+        }
+    }
+
+    /// `apply` skips any accelerator it cannot parse, logging to stderr that
+    /// nobody reads. Punctuation and digit keys are the risky shapes, so prove
+    /// every shipped default survives the parser.
+    #[test]
+    fn every_default_accelerator_parses() {
+        for (id, accel) in crate::config::default_hotkey_pairs() {
+            assert!(
+                Shortcut::from_str(&accel).is_ok(),
+                "default accelerator `{accel}` for `{id}` does not parse"
+            );
+        }
     }
 }
 

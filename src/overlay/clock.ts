@@ -14,6 +14,20 @@
 /** Position advance (ms) between reports that implies active playback. */
 const ACTIVITY_MS = 250;
 
+/**
+ * How long an explicit pause suppresses the "position moved, so we must be
+ * playing" inference.
+ *
+ * Players that report a stale position leave `lastReportPos` behind the truth.
+ * When the user pauses, the player flushes its real final position, which lands
+ * as a large jump — indistinguishable from playback to the inference, so the
+ * clock un-pauses itself and the lyrics keep running under a paused song. An
+ * explicit pause event is better evidence than a single jump, so it wins for a
+ * few seconds. A real resume is unaffected: that arrives as an explicit event,
+ * not through the inference.
+ */
+const PAUSE_GUARD_MS = 4000;
+
 export interface TimelineReport {
   positionMs: number;
   reportedAtMs: number;
