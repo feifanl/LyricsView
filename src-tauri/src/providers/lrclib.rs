@@ -51,11 +51,9 @@ impl LrclibItem {
     }
 
     fn into_doc(self, key: &str) -> Option<LyricsDoc> {
-        // LRCLIB reports the duration of the release it timed against (seconds).
-        let src_dur = self.duration.map(|d| (d * 1000.0) as u64);
         if let Some(synced) = self.synced_lyrics.filter(|s| !s.trim().is_empty()) {
             if let Ok(doc) = parse_lrc(&synced, SourceId::Lrclib, key) {
-                return Some(doc.with_source_duration(src_dur));
+                return Some(doc);
             }
         }
         if let Some(plain) = self.plain_lyrics.filter(|s| !s.trim().is_empty()) {

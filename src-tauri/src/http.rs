@@ -4,7 +4,9 @@ use std::time::Duration;
 
 use reqwest::Client;
 
-pub const APP_UA: &str = "LyricifyOSS/0.1.0 (private use)";
+// LRCLIB asks clients to identify themselves. Add the repo URL here once it is
+// public, so they can reach the project if this client ever misbehaves.
+pub const APP_UA: &str = "LyricsView/0.1.0";
 /// Browser-like UA for unofficial endpoints that reject non-browser clients.
 pub const BROWSER_UA: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) \

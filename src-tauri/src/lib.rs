@@ -1,4 +1,4 @@
-// Lyricify-OSS Rust core: window/tray setup, plugin registration and the
+// LyricsView Rust core: window/tray setup, plugin registration and the
 // #[tauri::command] surface. Providers and cache modules are added in later
 // milestones.
 mod cache;
@@ -43,6 +43,10 @@ pub fn run() {
             // Overlay starts in locked (click-through) mode.
             if let Some(overlay) = window::overlay_window(handle) {
                 let _ = overlay.set_ignore_cursor_events(true);
+                // The overlay is unfocused and click-through, so F12 never
+                // reaches it — open its devtools directly in dev builds.
+                #[cfg(debug_assertions)]
+                overlay.open_devtools();
             }
 
             // The settings window is created once and reused. Closing it (X)
@@ -92,5 +96,5 @@ pub fn run() {
             commands::share_line_image,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Lyricify-OSS");
+        .expect("error while running LyricsView");
 }

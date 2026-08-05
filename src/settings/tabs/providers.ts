@@ -21,7 +21,11 @@ function render(ctx: SettingsCtx): HTMLElement {
     el("div", {
       className: "notice",
       textContent:
-        "Musixmatch, NetEase and Apple Music are unofficial and can break or rate-limit at any time. They fail silently and fall back to the next provider.",
+        "LRCLIB is on by default: it is an open, public lyrics API meant to be used this way. " +
+        "Musixmatch, NetEase and Apple Music are off by default — they reach undocumented " +
+        "endpoints belonging to commercial services, so enabling them is your call and is " +
+        "subject to those services' terms. They can break or rate-limit at any time, and they " +
+        "fail silently and fall back to the next provider.",
     }),
   );
 

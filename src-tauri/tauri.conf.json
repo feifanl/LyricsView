@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Lyricify-OSS",
+  "productName": "LyricsView",
   "version": "0.1.0",
-  "identifier": "com.lyricify.oss",
+  "identifier": "com.lyricsview.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -29,7 +29,7 @@
       {
         "label": "settings",
         "url": "settings.html",
-        "title": "Lyricify-OSS",
+        "title": "LyricsView",
         "visible": false,
         "resizable": true,
         "width": 920,

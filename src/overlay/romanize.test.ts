@@ -18,7 +18,7 @@ describe("detectScript", () => {
     expect(detectScript("Привет")).toBe("ru");
   });
   it("returns other for Latin", () => {
-    expect(detectScript("Never gonna give you up")).toBe("other");
+    expect(detectScript("plain english text here")).toBe("other");
   });
 
   it("ignores a homoglyph planted in an English line", () => {

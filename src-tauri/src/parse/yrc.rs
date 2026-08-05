@@ -30,7 +30,6 @@ pub fn parse_yrc(text: &str, track_key: &str) -> Result<LyricsDoc, ParseError> {
         lines,
         plain: None,
         has_word_timing,
-        source_duration_ms: None,
     })
 }
 
@@ -82,18 +81,18 @@ mod tests {
 
     #[test]
     fn parses_yrc_word_timings() {
-        let src = "[13650,4230](13650,320,0)Never(13970,410,0) gonna(14380,350,0) give";
+        let src = "[13650,4230](13650,320,0)one(13970,410,0) two(14380,350,0) three";
         let doc = parse_yrc(src, "k").unwrap();
         assert!(doc.has_word_timing);
         let l = &doc.lines[0];
         assert_eq!(l.start, 13_650);
         assert_eq!(l.end, 17_880);
-        assert_eq!(l.text, "Never gonna give");
+        assert_eq!(l.text, "one two three");
         let w = l.words.as_ref().unwrap();
         assert_eq!(w.len(), 3);
         assert_eq!(w[0].start, 13_650);
         assert_eq!(w[0].end, 13_970);
-        assert_eq!(w[1].text, " gonna");
+        assert_eq!(w[1].text, " two");
         assert_eq!(w[2].end, 14_730);
     }
 

@@ -5,7 +5,7 @@ import { el, field, section, select } from "../ui";
 function render(ctx: SettingsCtx): HTMLElement {
   const root = el("div");
   root.append(
-    el("h1", { textContent: "Lyricify-OSS" }),
+    el("h1", { textContent: "LyricsView" }),
     el("p", { className: "hint", textContent: "Free floating karaoke lyrics overlay for Windows · v0.1.0" }),
   );
 

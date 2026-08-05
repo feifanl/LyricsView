@@ -40,13 +40,7 @@ impl AppleMusic {
             .header("Origin", "https://music.apple.com")
     }
 
-    async fn syllable_doc(
-        &self,
-        http: &Client,
-        id: &str,
-        key: &str,
-        src_dur: Option<u64>,
-    ) -> Option<LyricsDoc> {
+    async fn syllable_doc(&self, http: &Client, id: &str, key: &str) -> Option<LyricsDoc> {
         let url = format!("{AMP}/{}/songs/{id}/syllable-lyrics", self.storefront);
         let v = self
             .auth(http.get(url))
@@ -63,7 +57,7 @@ impl AppleMusic {
             .and_then(|d| d.get("attributes"))
             .and_then(|a| a.get("ttml"))
             .and_then(Value::as_str)?;
-        Some(parse_ttml(ttml, key).ok()?.with_source_duration(src_dur))
+        parse_ttml(ttml, key).ok()
     }
 }
 
@@ -73,9 +67,8 @@ impl Provider for AppleMusic {
         let query = format!("{} {}", track.title, track.artist);
         let candidates = self.search(http, &query).await;
         let idx = best_match(track, &candidates)?;
-        let cand = candidates.get(idx)?;
-        let (id, src_dur) = (cand.id.clone(), cand.duration_ms);
-        self.syllable_doc(http, &id, &key, src_dur).await
+        let id = candidates.get(idx)?.id.clone();
+        self.syllable_doc(http, &id, &key).await
     }
 
     async fn search(&self, http: &Client, query: &str) -> Vec<SearchCandidate> {
@@ -104,7 +97,7 @@ impl Provider for AppleMusic {
 
     async fn fetch_candidate(&self, http: &Client, cand: &SearchCandidate) -> Option<LyricsDoc> {
         let key = super::candidate_key(cand);
-        self.syllable_doc(http, &cand.id, &key, cand.duration_ms).await
+        self.syllable_doc(http, &cand.id, &key).await
     }
 }
 

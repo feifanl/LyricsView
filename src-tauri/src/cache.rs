@@ -184,7 +184,6 @@ mod tests {
             lines: vec![LyricLine::new(0, 1000, "hi".into())],
             plain: None,
             has_word_timing: word,
-            source_duration_ms: None,
         }
     }
 

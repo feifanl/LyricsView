@@ -74,7 +74,7 @@ async function boot(): Promise<void> {
     for (let i = 0; i < 3; i++) mark.append(document.createElement("i"));
     brand.append(
       mark,
-      Object.assign(document.createElement("span"), { className: "brand-name", textContent: "Lyricify" }),
+      Object.assign(document.createElement("span"), { className: "brand-name", textContent: "LyricsView" }),
     );
     tabsEl.replaceChildren(
       brand,

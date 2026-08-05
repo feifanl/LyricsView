@@ -210,10 +210,15 @@ export function defaultSettings(): Settings {
       Karaoke: karaokePreset(),
     },
     providerOrder: ["lrclib", "musixmatch", "netease", "applemusic"],
+    // Only LRCLIB is on out of the box. It is an open, public, no-auth lyrics
+    // API meant to be used this way. The others reach undocumented endpoints
+    // belonging to commercial services — using them is the user's decision to
+    // make with their own account, not a default this app makes for them.
+    // Existing configs keep whatever the user already chose (see mergeDefaults).
     providersEnabled: {
       lrclib: true,
-      musixmatch: true,
-      netease: true,
+      musixmatch: false,
+      netease: false,
       applemusic: false,
       manual: true,
     },

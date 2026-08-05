@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    lyricify_oss_lib::run();
+    lyricsview_lib::run();
 }

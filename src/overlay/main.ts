@@ -15,7 +15,7 @@ import type { LyricsDoc, TrackInfo } from "../shared/types";
 import { applyPresetVars } from "./apply";
 import { configureAutoWidth, requestWidth } from "./autowidth";
 import { PlaybackClock } from "./clock";
-import { autoStretchPpm } from "./drift";
+import * as diag from "./diag"; // TEMP: sync diagnostic, remove with diag.ts
 import { initEditMode } from "./edit";
 import { restoreGeometry } from "./geometry";
 import { Renderer } from "./renderer";
@@ -37,11 +37,7 @@ let currentTrack: TrackInfo | null = null;
 let currentDoc: LyricsDoc | null = null;
 let globalOffsetMs = 0;
 let trackOffsetMs = 0;
-// Drift correction (parts-per-million of position) comes in two parts: one
-// derived from the duration gap between the playing release and the release the
-// lyrics were timed against, and one the user dialled in by hand. They add.
-let autoStretchPpmValue = 0;
-let userStretchPpm = 0;
+let trackStretchPpm = 0; // per-track drift correction (parts-per-million)
 let trackKey: string | null = null;
 let toastTimer = 0;
 let showTranslation = false; // Original vs Translated view
@@ -69,12 +65,8 @@ function applyOffsets(): void {
 // Playback-position → lyric-time mapping. Drift correction rescales position so
 // a lyric timeline from a different release can be linearly aligned to the
 // audio: lyricTime = rate*audio + offset. rate == 1 (ppm 0) is a no-op.
-function stretchPpm(): number {
-  return autoStretchPpmValue + userStretchPpm;
-}
-
 function estimatePos(now: number): number {
-  const rate = 1 + stretchPpm() / 1_000_000;
+  const rate = 1 + trackStretchPpm / 1_000_000;
   const offset = globalOffsetMs + trackOffsetMs;
   return rate * clock.estimate(now) + offset * (1 - rate);
 }
@@ -219,10 +211,10 @@ async function loadTrackMeta(): Promise<void> {
     trackKey = await cmd.currentTrackKey();
     const meta = trackKey ? await cmd.getTrackMeta(trackKey) : null;
     trackOffsetMs = meta?.offsetMs ?? 0;
-    userStretchPpm = meta?.stretchPpm ?? 0;
+    trackStretchPpm = meta?.stretchPpm ?? 0;
   } catch {
     trackOffsetMs = 0;
-    userStretchPpm = 0;
+    trackStretchPpm = 0;
   }
   applyOffsets();
 }
@@ -232,7 +224,6 @@ async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
   currentTrack = t;
   hasDoc = false;
   currentDoc = null;
-  autoStretchPpmValue = 0; // recomputed once we know which release was timed
   await loadTrackMeta();
   if (seq !== loadSeq) return;
   exitEmptyState(); // a fresh search supersedes any prior empty-state
@@ -241,7 +232,6 @@ async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
     const doc = await cmd.fetchLyrics(t, force);
     if (seq !== loadSeq) return; // a newer track superseded this fetch
     if (doc && doc.lines.length > 0) {
-      autoStretchPpmValue = autoStretchPpm(t.durationMs, doc.sourceDurationMs);
       gateTranslations(doc); // drop translations that don't match the target language
       currentDoc = doc;
       renderer.setDoc(doc); // replaces the status message
@@ -316,17 +306,14 @@ function nudgeOffset(deltaMs: number): void {
 const DRIFT_STEP_PPM = 500; // ~0.05% per press ≈ 90 ms over a 3-min song
 
 async function persistStretch(): Promise<void> {
-  if (trackKey) await cmd.setTrackStretch(trackKey, userStretchPpm);
+  if (trackKey) await cmd.setTrackStretch(trackKey, trackStretchPpm);
 }
 
-// Only the manual half is nudged and persisted; the automatic half is re-derived
-// on every load. So a nudge trims whatever the duration ratio got wrong rather
-// than replacing it, and the toast reports the total actually in effect.
 function nudgeDrift(deltaPpm: number): void {
-  userStretchPpm += deltaPpm;
+  trackStretchPpm += deltaPpm;
   void persistStretch();
-  const pct = (stretchPpm() / 10_000).toFixed(2); // 10 000 ppm = 1%
-  toast(`drift ${stretchPpm() >= 0 ? "+" : ""}${pct}%`);
+  const pct = (trackStretchPpm / 10_000).toFixed(2); // 10 000 ppm = 1%
+  toast(`drift ${trackStretchPpm >= 0 ? "+" : ""}${pct}%`);
 }
 
 function jumpLine(dir: -1 | 1): void {
@@ -403,6 +390,21 @@ async function boot(): Promise<void> {
   renderer.onFit = requestWidth;
   void restoreGeometry(activePreset(settings)).then(() => configureAutoWidth(settings));
 
+  // TEMP: sync diagnostic (see diag.ts).
+  diag.install({
+    rawPos: () => clock.estimate(Date.now()) - clock.getUserOffset(),
+    renderPos: () => estimatePos(Date.now()),
+    lines: () => currentDoc?.lines.map((l) => ({ start: l.start, text: l.text })) ?? [],
+    applyCorrection: (stretchPpm, offsetMs) => {
+      trackStretchPpm = stretchPpm;
+      trackOffsetMs = offsetMs - globalOffsetMs;
+      applyOffsets();
+      void persistStretch();
+      void persistOffset();
+      toast(`drift ${(stretchPpm / 10_000).toFixed(2)}% / offset ${trackOffsetMs} ms`);
+    },
+  });
+
   document.getElementById("overlay-root")?.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     void shareCurrentLine();
@@ -412,15 +414,18 @@ async function boot(): Promise<void> {
     exitEmptyState(); // new song: clear any lingering empty-state fade
     setFaded(false); // a new track means we're active
     clock.reset(); // don't carry the previous song's position/anchor
+    diag.reset(); // TEMP
     lastTimelinePos = -1;
     trackChangedAt = Date.now();
     void loadLyrics(t, false);
   });
   await onPlaybackState((p) => {
+    diag.notePlaying(p.playing); // TEMP
     clock.setPlaying(p.playing, Date.now());
     onPlayingChanged(p.playing);
   });
   await onTimeline((t) => {
+    diag.noteReport(t.positionMs, t.reportedAtMs, t.rate); // TEMP: before update, while still ground truth
     clock.update(t, Date.now());
     // Advancing timeline = active playback: keep the overlay visible even if
     // the player's playback-state event is unreliable (browsers). Skip while

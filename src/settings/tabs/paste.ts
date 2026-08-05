@@ -19,7 +19,7 @@ function render(_ctx: SettingsCtx): HTMLElement {
 
   const area = el("textarea", { className: "paste-area" });
   area.rows = 16;
-  area.placeholder = "[00:12.00]Never gonna give you up\n[00:16.50]Never gonna let you down";
+  area.placeholder = "[00:12.00]first line of the lyrics\n[00:16.50]second line of the lyrics";
 
   const status = el("span", { className: "hint" });
   const save = button(

@@ -54,13 +54,6 @@ pub struct LyricsDoc {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plain: Option<String>,
     pub has_word_timing: bool,
-    /// Duration of the *release this timeline was timed against*, when the
-    /// provider reports one. Compared against the playing track's own duration
-    /// it yields an automatic drift correction (see `drift.ts`): a 1962 master
-    /// and its remaster differ in tape speed, so a timeline from one runs
-    /// progressively out of sync against the other.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_duration_ms: Option<u64>,
 }
 
 impl LyricsDoc {
@@ -72,14 +65,7 @@ impl LyricsDoc {
             lines: Vec::new(),
             plain: Some(plain),
             has_word_timing: false,
-            source_duration_ms: None,
         }
-    }
-
-    /// Tag the doc with the source release's duration (no-op for `None`).
-    pub fn with_source_duration(mut self, ms: Option<u64>) -> Self {
-        self.source_duration_ms = ms;
-        self
     }
 }
 

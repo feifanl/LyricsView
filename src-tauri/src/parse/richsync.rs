@@ -79,7 +79,6 @@ pub fn parse_richsync(body: &str, track_key: &str) -> Result<LyricsDoc, ParseErr
         lines,
         plain: None,
         has_word_timing,
-        source_duration_ms: None,
     })
 }
 
@@ -87,7 +86,7 @@ pub fn parse_richsync(body: &str, track_key: &str) -> Result<LyricsDoc, ParseErr
 mod tests {
     use super::*;
 
-    const SAMPLE: &str = r#"[{"ts":13.65,"te":17.88,"l":[{"c":"Never","o":0},{"c":" gonna","o":0.32},{"c":" give","o":0.73}],"x":"Never gonna give"}]"#;
+    const SAMPLE: &str = r#"[{"ts":13.65,"te":17.88,"l":[{"c":"one","o":0},{"c":" two","o":0.32},{"c":" three","o":0.73}],"x":"one two three"}]"#;
 
     #[test]
     fn parses_word_level_timings() {
@@ -97,13 +96,13 @@ mod tests {
         let l = &doc.lines[0];
         assert_eq!(l.start, 13_650);
         assert_eq!(l.end, 17_880);
-        assert_eq!(l.text, "Never gonna give");
+        assert_eq!(l.text, "one two three");
         let w = l.words.as_ref().unwrap();
         assert_eq!(w.len(), 3);
         assert_eq!(w[0].start, 13_650);
         assert_eq!(w[0].end, 13_970); // next chunk start (0.32s later)
         assert_eq!(w[1].start, 13_970);
-        assert_eq!(w[2].text, " give");
+        assert_eq!(w[2].text, " three");
         assert_eq!(w[2].end, 17_880); // last chunk -> line end
     }
 

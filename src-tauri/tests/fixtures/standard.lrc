@@ -1,9 +1,9 @@
-[ti:Never Gonna Give You Up]
-[ar:Rick Astley]
-[al:Whenever You Need Somebody]
+[ti:Test Song One]
+[ar:Test Artist]
+[al:Test Album]
 [offset:+120]
-[00:00.50]We're no strangers to love
-[00:12.00][01:45.30]Never gonna give you up
-[00:16.50]Never gonna let you down
-[00:19.20]Never gonna run around and desert you
+[00:00.50]first line of the fixture
+[00:12.00][01:45.30]repeated line with two timestamps
+[00:16.50]second line of the fixture
+[00:19.20]third line of the fixture
 [99:xx.zz]this line has a malformed timestamp and is skipped

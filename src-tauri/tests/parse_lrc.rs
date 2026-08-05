@@ -1,6 +1,6 @@
 // Cargo tests for the LRC / Enhanced-LRC parser against real-world fixtures.
-use lyricify_oss_lib::lyrics::{ParseError, SourceId};
-use lyricify_oss_lib::parse::{parse_lrc, serialize_lrc};
+use lyricsview_lib::lyrics::{ParseError, SourceId};
+use lyricsview_lib::parse::{parse_lrc, serialize_lrc};
 
 const STANDARD: &str = include_str!("fixtures/standard.lrc");
 const ENHANCED: &str = include_str!("fixtures/enhanced.lrc");
@@ -11,12 +11,12 @@ fn standard_lrc_expands_multi_stamps_applies_offset_and_sorts() {
     assert!(!doc.has_word_timing);
 
     // Starts, sorted, with the +120 ms file offset applied. Two stamps on the
-    // "Never gonna give you up" line expand into two lines (12.00 and 1:45.30).
+    // repeated line expand into two lines (12.00 and 1:45.30).
     let starts: Vec<u64> = doc.lines.iter().map(|l| l.start).collect();
     assert_eq!(starts, vec![620, 12_120, 16_620, 19_320, 105_420]);
 
     // Out-of-order fixture line sorted to the front.
-    assert_eq!(doc.lines[0].text, "We're no strangers to love");
+    assert_eq!(doc.lines[0].text, "first line of the fixture");
     // Malformed-timestamp line dropped.
     assert!(doc.lines.iter().all(|l| !l.text.contains("malformed")));
 
@@ -31,15 +31,15 @@ fn enhanced_lrc_parses_word_timings() {
     assert_eq!(doc.lines.len(), 2);
 
     let l0 = &doc.lines[0];
-    assert_eq!(l0.text, "Never gonna give you up");
+    assert_eq!(l0.text, "first line with word timings");
     let words = l0.words.as_ref().unwrap();
     assert_eq!(words.len(), 5);
-    assert_eq!(words[0].text, "Never ");
+    assert_eq!(words[0].text, "first ");
     assert_eq!(words[0].start, 12_000);
     assert_eq!(words[0].end, 12_400); // next word start
     assert_eq!(words[1].start, 12_400);
     // Last word ends with the line (= next line start).
-    assert_eq!(words[4].text, "up");
+    assert_eq!(words[4].text, "timings");
     assert_eq!(words[4].end, l0.end);
     assert_eq!(l0.end, 16_500);
 }

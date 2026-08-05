@@ -72,7 +72,7 @@ export async function shareCard(data: CardData): Promise<void> {
   ctx.fillText(`${data.title} — ${data.artist}`, W / 2, H - 56);
   ctx.font = `18px "${font}", sans-serif`;
   ctx.globalAlpha = 0.6;
-  ctx.fillText("Lyricify-OSS", W / 2, H - 28);
+  ctx.fillText("LyricsView", W / 2, H - 28);
   ctx.globalAlpha = 1;
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));

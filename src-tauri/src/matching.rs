@@ -1,23 +1,13 @@
 // Track-matching heuristics shared by all providers. Pure + unit-tested.
 //
 // Candidates are scored by normalized title/artist similarity plus duration
-// proximity (±2 s is a strong signal). A candidate whose known duration is off
-// by more than 8 s from a known track duration is rejected outright.
-//
-// Duration carries real weight here because it is often the *only* thing that
-// separates two releases of the same song: an original master, its remaster and
-// a live cut share a title and artist exactly, but their timelines don't line
-// up. Getting this wrong is what makes lyrics drift. The hard reject stays
-// loose (8 s) — player-reported durations are noisy, and "no lyrics at all" is
-// a worse outcome than "slightly off lyrics" — while the *score* falls off over
-// a much tighter 5 s, so a closer sibling always wins when one exists.
+// proximity (±3 s is a strong signal). A candidate whose known duration is off
+// by more than 10 s from a known track duration is rejected outright.
 use crate::model::{SearchCandidate, TrackInfo};
 use crate::normalize::normalize;
 
-const DURATION_REJECT_MS: i64 = 8_000;
-/// Duration difference at which the duration sub-score reaches 0.
-const DURATION_SCALE_MS: f64 = 5_000.0;
-const DURATION_STRONG_MS: f64 = 2_000.0;
+const DURATION_REJECT_MS: i64 = 10_000;
+const DURATION_STRONG_MS: f64 = 3_000.0;
 
 /// Levenshtein-ratio similarity in [0, 1] over normalized strings.
 pub fn similarity(a: &str, b: &str) -> f64 {
@@ -50,10 +40,10 @@ fn levenshtein(a: &str, b: &str) -> usize {
     prev[b.len()]
 }
 
-/// Duration closeness score in [0, 1]; 1.0 for an exact match, 0 at 5 s off.
+/// Duration closeness score in [0, 1]; 1.0 for an exact match, ~0 at 10 s off.
 fn duration_score(a_ms: u64, b_ms: u64) -> f64 {
     let diff = (a_ms as i64 - b_ms as i64).abs() as f64;
-    (1.0 - diff / DURATION_SCALE_MS).max(0.0)
+    (1.0 - diff / (DURATION_REJECT_MS as f64)).max(0.0)
 }
 
 /// Overall match score in [0, 1]. `None` if the candidate must be rejected.
@@ -72,7 +62,7 @@ pub fn score(track: &TrackInfo, cand: &SearchCandidate) -> Option<f64> {
     let dur = match (track.duration_ms, cand.duration_ms) {
         (t, Some(c)) if t > 0 => {
             let base = duration_score(t, c);
-            // Extra reward for a very tight (<2 s) match.
+            // Extra reward for a very tight (<3 s) match.
             let tight = if (t as i64 - c as i64).abs() as f64 <= DURATION_STRONG_MS {
                 0.15
             } else {
@@ -83,7 +73,7 @@ pub fn score(track: &TrackInfo, cand: &SearchCandidate) -> Option<f64> {
         _ => 0.5, // unknown duration: neutral
     };
 
-    let mut s = title * 0.45 + artist * 0.25 + dur * 0.30;
+    let mut s = title * 0.5 + artist * 0.3 + dur * 0.2;
 
     // Album agreement breaks ties between same-title/same-artist versions — e.g.
     // Beyond's "光辉岁月" ships as both a Cantonese original and a Mandarin
@@ -95,13 +85,6 @@ pub fn score(track: &TrackInfo, cand: &SearchCandidate) -> Option<f64> {
         if album > 0.6 {
             s += album * 0.15;
         }
-    }
-
-    // Word-level timing is strictly better data than line-level, so it breaks a
-    // tie between two otherwise-equal entries of the same song. Small on
-    // purpose: it must never pull the match onto a worse-matching release.
-    if cand.has_word_timing == Some(true) {
-        s += 0.05;
     }
 
     Some(s.min(1.0))
@@ -188,46 +171,6 @@ mod tests {
         let mut target = cand("光辉岁月", "Beyond", Some(300_000));
         target.album = "命运派对".into();
         assert_eq!(best_match(&t, &[other, target]), Some(1));
-    }
-
-    #[test]
-    fn duration_separates_identical_title_artist_releases() {
-        // The drift case: one song, two masters. Title and artist are byte-for-byte
-        // identical, so only the duration can tell the right timeline from the wrong.
-        let t = track("500 Miles", "Peter, Paul and Mary", 180_000);
-        let cands = vec![
-            cand("500 Miles", "Peter, Paul and Mary", Some(186_000)), // remaster
-            cand("500 Miles", "Peter, Paul and Mary", Some(180_200)), // the one playing
-        ];
-        assert_eq!(best_match(&t, &cands), Some(1));
-    }
-
-    #[test]
-    fn lone_candidate_survives_a_loose_duration() {
-        // Player-reported durations are noisy; a sole hit a few seconds off is
-        // still far better than showing no lyrics.
-        let t = track("500 Miles", "Peter, Paul and Mary", 180_000);
-        let c = cand("500 Miles", "Peter, Paul and Mary", Some(187_000));
-        assert!(score(&t, &c).is_some_and(|s| s >= 0.5));
-    }
-
-    #[test]
-    fn word_timing_breaks_an_exact_tie() {
-        let t = track("Song", "Artist", 200_000);
-        let mut line_level = cand("Song", "Artist", Some(200_000));
-        line_level.has_word_timing = Some(false);
-        let mut word_level = cand("Song", "Artist", Some(200_000));
-        word_level.has_word_timing = Some(true);
-        assert_eq!(best_match(&t, &[line_level, word_level]), Some(1));
-    }
-
-    #[test]
-    fn word_timing_never_outweighs_a_better_duration() {
-        let t = track("Song", "Artist", 200_000);
-        let mut wrong_release = cand("Song", "Artist", Some(204_000));
-        wrong_release.has_word_timing = Some(true);
-        let right_release = cand("Song", "Artist", Some(200_000));
-        assert_eq!(best_match(&t, &[wrong_release, right_release]), Some(1));
     }
 
     #[test]

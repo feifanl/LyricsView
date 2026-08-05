@@ -3,7 +3,7 @@ import { splitUnits, synthesizeWords } from "./interpolate";
 
 describe("splitUnits", () => {
   it("splits Latin text on whitespace, keeping trailing spaces", () => {
-    expect(splitUnits("Never gonna give")).toEqual(["Never ", "gonna ", "give"]);
+    expect(splitUnits("one two three")).toEqual(["one ", "two ", "three"]);
   });
 
   it("splits CJK runs per character", () => {
@@ -21,7 +21,7 @@ describe("splitUnits", () => {
 
 describe("synthesizeWords", () => {
   it("covers the whole line duration contiguously", () => {
-    const words = synthesizeWords("Never gonna give", 1000, 4000);
+    const words = synthesizeWords("one two three", 1000, 4000);
     expect(words[0]!.start).toBe(1000);
     expect(words.at(-1)!.end).toBe(4000);
     for (let i = 1; i < words.length; i++) {

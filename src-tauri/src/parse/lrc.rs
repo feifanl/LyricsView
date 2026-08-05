@@ -133,7 +133,6 @@ pub fn parse_lrc(text: &str, source: SourceId, track_key: &str) -> Result<Lyrics
         lines,
         plain: None,
         has_word_timing,
-        source_duration_ms: None,
     })
 }
 
