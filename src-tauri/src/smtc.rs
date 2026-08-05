@@ -35,6 +35,14 @@ pub struct SmtcState {
     pub current_track: Mutex<Option<TrackInfo>>,
 }
 
+impl SmtcState {
+    /// Drop the remembered playback status so the next poll re-emits it even if
+    /// it has not changed. Used when a fresh listener needs the current value.
+    pub fn clear_playback_dedupe(&self) {
+        *self.last_playing.lock().unwrap() = None;
+    }
+}
+
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

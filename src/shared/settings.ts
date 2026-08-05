@@ -188,7 +188,9 @@ function glassBarPreset(): Preset {
     position: null,
     size: { w: 1120, h: 88 },
     font: { family: "Segoe UI", sizePx: 27, weight: 600 },
-    colors: { base: "#ffffffe6", fill: "#8be9fd", textShadow: false, outline: false },
+    // Sampled from GitHub's own green. Unsung text stays near-white so the
+    // karaoke sweep is the only thing carrying colour.
+    colors: { base: "#ffffffe6", fill: "#5fed83", textShadow: false, outline: false },
     textOpacity: 1,
     textBrightness: 1,
     opacity: 1,

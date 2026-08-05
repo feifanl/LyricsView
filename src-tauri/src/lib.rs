@@ -79,6 +79,7 @@ pub fn run() {
             commands::set_pinned_session,
             commands::current_track_key,
             commands::current_track,
+            commands::resync_playback_state,
             commands::export_lrc,
             commands::fetch_lyrics,
             commands::search_provider,

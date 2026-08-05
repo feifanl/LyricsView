@@ -105,8 +105,8 @@ cached. NetEase's bundled translation (`tlyric`) is shown for free when availabl
 | Toggle edit mode | `Alt+Shift+E` |
 | Offset −100 ms | `Alt+Shift+[` |
 | Offset +100 ms | `Alt+Shift+]` |
-| Drift −0.05% | `Alt+Shift+,` |
-| Drift +0.05% | `Alt+Shift+.` |
+| Drift −0.25% | `Alt+Shift+,` |
+| Drift +0.25% | `Alt+Shift+.` |
 | Jump to previous line | `Alt+Shift+←` |
 | Jump to next line | `Alt+Shift+→` |
 | Cycle lyric form (prev / next) | `Alt+Shift+↑` / `Alt+Shift+↓` |

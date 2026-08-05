@@ -306,7 +306,11 @@ function nudgeOffset(deltaMs: number): void {
   toast(`offset ${trackOffsetMs >= 0 ? "+" : ""}${trackOffsetMs} ms`);
 }
 
-const DRIFT_STEP_PPM = 500; // ~0.05% per press ≈ 90 ms over a 3-min song
+/** Per-press drift step. Sized against what actually goes wrong: a lyric file
+ *  timed to a different release is typically off by 1–4%, so a 0.05% step needed
+ *  20–80 presses to converge and nobody would sit through that. At 0.25% the
+ *  same correction is 4–16 presses, still fine enough not to overshoot. */
+const DRIFT_STEP_PPM = 2500;
 
 async function persistStretch(): Promise<void> {
   if (trackKey) await cmd.setTrackStretch(trackKey, trackStretchPpm);
@@ -494,6 +498,11 @@ async function seedCurrentTrack(): Promise<void> {
         clock.reset();
         lastTimelinePos = -1;
         trackChangedAt = Date.now();
+        // The clock starts paused and only learns otherwise from a playback-state
+        // event. Those are deduped, and the initial one fired before this webview
+        // existed — so ask for it again, or a song already playing at launch
+        // leaves the clock frozen at whatever position the first report carried.
+        void cmd.resyncPlaybackState();
         void loadLyrics(existing, false);
         return;
       }

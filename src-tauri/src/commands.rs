@@ -64,6 +64,21 @@ pub fn current_track<R: Runtime>(app: AppHandle<R>) -> Option<TrackInfo> {
         .and_then(|s| s.current_track.lock().unwrap().clone())
 }
 
+/// Make the watcher re-announce the playback status on its next poll.
+///
+/// Playback-state events are deduped: the status is emitted once and then only
+/// when it changes. The watcher emits the initial status during app setup, before
+/// the overlay's webview has attached its listener, so an overlay that starts
+/// while a song is already playing never hears that the song is playing — and its
+/// clock, which begins paused, stays frozen. Clearing the dedupe makes the next
+/// poll (≤500 ms) emit again.
+#[tauri::command]
+pub fn resync_playback_state<R: Runtime>(app: AppHandle<R>) {
+    if let Some(state) = app.try_state::<SmtcState>() {
+        state.clear_playback_dedupe();
+    }
+}
+
 /// Export a cached track's lyrics as an `.lrc` file via a save dialog.
 #[tauri::command]
 pub fn export_lrc<R: Runtime>(app: AppHandle<R>, track_key: String) -> Result<bool, String> {

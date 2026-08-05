@@ -65,6 +65,9 @@ export const cmd = {
   currentTrack(): Promise<TrackInfo | null> {
     return invoke("current_track");
   },
+  resyncPlaybackState(): Promise<void> {
+    return invoke("resync_playback_state");
+  },
   shareLineImage(png: number[]): Promise<void> {
     return invoke("share_line_image", { png });
   },
