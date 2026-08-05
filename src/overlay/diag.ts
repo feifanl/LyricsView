@@ -1,6 +1,10 @@
-// TEMPORARY sync diagnostic. Answers one question: when the highlight drifts,
+// Dev-only sync diagnostic. Answers one question: when the highlight drifts,
 // is it our clock losing the audio, or is the lyric file's timeline simply not
 // this recording's timeline?
+//
+// Every call site in main.ts is guarded by `import.meta.env.DEV`, so this module
+// is tree-shaken out of production builds and `window.__diag` exists only in
+// `npm run tauri dev`.
 //
 // Two independent measurements, neither of which needs the other:
 //
@@ -12,11 +16,10 @@
 //      free-running blind, which is itself the finding.
 //
 //   2. Alignment truth — needs an ear. Call mark(i) while line i is being sung;
-//      that pairs our raw position with the line's real start. Two marks far
-//      apart are enough to solve rate + offset by least squares.
+//      that pairs our raw position with the line's real start. Three marks are
+//      the minimum that can tell a real rate error from a single step.
 //
-// Console entry point is `__diag`. Delete this file and its call sites in
-// main.ts when the question is settled.
+// Console entry point is `__diag`.
 
 interface RateSample {
   /** Player position at the report (ms). */

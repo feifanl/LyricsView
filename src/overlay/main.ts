@@ -15,7 +15,10 @@ import type { LyricsDoc, TrackInfo } from "../shared/types";
 import { applyPresetVars } from "./apply";
 import { configureAutoWidth, requestWidth } from "./autowidth";
 import { PlaybackClock } from "./clock";
-import * as diag from "./diag"; // TEMP: sync diagnostic, remove with diag.ts
+// Sync diagnostic. Dev-only: every call site sits behind `import.meta.env.DEV`,
+// which Vite replaces with a literal `false` in a production build, so the whole
+// module is tree-shaken out and `window.__diag` never reaches users.
+import * as diag from "./diag";
 import { initEditMode } from "./edit";
 import { restoreGeometry } from "./geometry";
 import { Renderer } from "./renderer";
@@ -390,20 +393,21 @@ async function boot(): Promise<void> {
   renderer.onFit = requestWidth;
   void restoreGeometry(activePreset(settings)).then(() => configureAutoWidth(settings));
 
-  // TEMP: sync diagnostic (see diag.ts).
-  diag.install({
-    rawPos: () => clock.estimate(Date.now()) - clock.getUserOffset(),
-    renderPos: () => estimatePos(Date.now()),
-    lines: () => currentDoc?.lines.map((l) => ({ start: l.start, text: l.text })) ?? [],
-    applyCorrection: (stretchPpm, offsetMs) => {
-      trackStretchPpm = stretchPpm;
-      trackOffsetMs = offsetMs - globalOffsetMs;
-      applyOffsets();
-      void persistStretch();
-      void persistOffset();
-      toast(`drift ${(stretchPpm / 10_000).toFixed(2)}% / offset ${trackOffsetMs} ms`);
-    },
-  });
+  if (import.meta.env.DEV) {
+    diag.install({
+      rawPos: () => clock.estimate(Date.now()) - clock.getUserOffset(),
+      renderPos: () => estimatePos(Date.now()),
+      lines: () => currentDoc?.lines.map((l) => ({ start: l.start, text: l.text })) ?? [],
+      applyCorrection: (stretchPpm, offsetMs) => {
+        trackStretchPpm = stretchPpm;
+        trackOffsetMs = offsetMs - globalOffsetMs;
+        applyOffsets();
+        void persistStretch();
+        void persistOffset();
+        toast(`drift ${(stretchPpm / 10_000).toFixed(2)}% / offset ${trackOffsetMs} ms`);
+      },
+    });
+  }
 
   document.getElementById("overlay-root")?.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -414,18 +418,19 @@ async function boot(): Promise<void> {
     exitEmptyState(); // new song: clear any lingering empty-state fade
     setFaded(false); // a new track means we're active
     clock.reset(); // don't carry the previous song's position/anchor
-    diag.reset(); // TEMP
+    if (import.meta.env.DEV) diag.reset();
     lastTimelinePos = -1;
     trackChangedAt = Date.now();
     void loadLyrics(t, false);
   });
   await onPlaybackState((p) => {
-    diag.notePlaying(p.playing); // TEMP
+    if (import.meta.env.DEV) diag.notePlaying(p.playing);
     clock.setPlaying(p.playing, Date.now());
     onPlayingChanged(p.playing);
   });
   await onTimeline((t) => {
-    diag.noteReport(t.positionMs, t.reportedAtMs, t.rate); // TEMP: before update, while still ground truth
+    // Before clock.update, while the report is still untouched ground truth.
+    if (import.meta.env.DEV) diag.noteReport(t.positionMs, t.reportedAtMs, t.rate);
     clock.update(t, Date.now());
     // Advancing timeline = active playback: keep the overlay visible even if
     // the player's playback-state event is unreliable (browsers). Skip while
