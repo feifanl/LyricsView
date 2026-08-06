@@ -56,7 +56,14 @@ function comparable(text: string): string {
 
 /**
  * True when a translation for `original` would add nothing: the line is already
- * in the target language, or the "translation" restates the original.
+ * in the target language, the "translation" restates the original, or the
+ * translation is not in the target language at all.
+ *
+ * That last case is what a provider's bundled translation looks like when it was
+ * never meant for you. NetEase ships `tlyric` for a Chinese audience, so a Korean
+ * song carries a Chinese translation — perfectly good, and useless to a reader
+ * targeting English. Checking only the original's language let it through, since
+ * Korean plainly is not English.
  */
 export function isRedundantTranslation(
   original: string,
@@ -65,7 +72,8 @@ export function isRedundantTranslation(
 ): boolean {
   if (!translation || !translation.trim()) return true;
   if (comparable(translation) === comparable(original)) return true;
-  return langOf(original) === baseLang(targetLang);
+  if (langOf(original) === baseLang(targetLang)) return true;
+  return langOf(translation) !== baseLang(targetLang);
 }
 
 /** True when a line is worth sending to the translator at all. */

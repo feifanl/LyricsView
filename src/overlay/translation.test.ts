@@ -49,3 +49,21 @@ describe("docLang", () => {
     expect(docLang(["", "   ", "사랑해"])).toBe("ko");
   });
 });
+
+describe("bundled translations in the wrong language", () => {
+  it("drops a Chinese tlyric on a Korean song when targeting English", () => {
+    expect(isRedundantTranslation("죽어도 못 보내", "就算死也不能送走", "en")).toBe(true);
+  });
+
+  it("keeps that same Chinese translation when the target is Chinese", () => {
+    expect(isRedundantTranslation("죽어도 못 보내", "就算死也不能送走", "zh")).toBe(false);
+  });
+
+  it("keeps an English translation of a Korean line when targeting English", () => {
+    expect(isRedundantTranslation("죽어도 못 보내", "I can't let you go", "en")).toBe(false);
+  });
+
+  it("drops a Japanese translation when targeting English", () => {
+    expect(isRedundantTranslation("죽어도 못 보내", "死んでも離さない", "en")).toBe(true);
+  });
+});
