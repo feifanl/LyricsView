@@ -532,9 +532,12 @@ table.grid td {
   --lp-base: #ffffffe6;
   --lp-fill: #3ecf8e;
   --lp-bgcolor: rgba(20, 20, 20, 0.35);
-  max-width: 86%;
-  padding: 13px 24px;
-  border-radius: 14px;
+  /* Height, padding and radius come from the preset in applyScale(); width is
+     left to the content, because the real overlay's pill hugs its text and the
+     window grows to hold it. Don't pin any of them here. */
+  display: inline-grid;
+  place-items: center;
+  width: max-content;
   text-align: center;
 }
 .lp-card.lp-bg-glass {
