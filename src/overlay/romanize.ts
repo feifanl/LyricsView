@@ -125,9 +125,25 @@ async function zhPinyin(text: string): Promise<string> {
   return pinyin(text, { toneType: "symbol", type: "string" });
 }
 
+/** Runs of Hangul, so everything between them can be preserved verbatim. */
+const HANGUL_RUN = /[가-힣ᄀ-ᇿ]+/g;
+
+/**
+ * Romanize Korean run by run.
+ *
+ * `Romanize.fromString` returns an empty string for any input containing a
+ * single non-Hangul character — a space, a comma, an English word. Lyrics are
+ * never pure Hangul, so calling it on a whole line always produced "", which
+ * `annotate` passed through as a romaji sub-line of nothing. Feed it only the
+ * Hangul and put the original spacing and punctuation back around the results.
+ *
+ * A run that still comes back empty keeps its Hangul rather than vanishing; if
+ * every run fails the output equals the input and `annotate`'s
+ * same-thing-twice check drops the sub-line.
+ */
 async function koRomaja(text: string): Promise<string> {
   const { Romanize } = await import("hangul-romanize");
-  return Romanize.fromString(text);
+  return text.replace(HANGUL_RUN, (run) => Romanize.fromString(run) || run);
 }
 
 /** Letters and digits only, case-folded — for telling whether a transliteration

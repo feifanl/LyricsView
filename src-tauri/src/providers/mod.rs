@@ -16,7 +16,7 @@ use tauri::{AppHandle, Runtime};
 
 use crate::config::{self, ProviderSettings};
 use crate::http::{client, APP_UA, BROWSER_UA};
-use crate::lyrics::{LyricsDoc, SourceId};
+use crate::lyrics::{base_lang, doc_score, LyricsDoc, SourceId};
 use crate::model::{SearchCandidate, TrackInfo};
 
 /// A lyrics source. Fetches are fail-soft: any error yields `None`/empty so the
@@ -28,22 +28,32 @@ pub trait Provider {
     async fn fetch_candidate(&self, http: &Client, cand: &SearchCandidate) -> Option<LyricsDoc>;
 }
 
-/// Fetch the best available lyrics for a track across the configured chain.
+/// Fetch lyrics for a track across the configured chain, returning **every**
+/// document the chain produced, in the order fetched.
 ///
-/// Providers are scored so a later hit can outrank an earlier one on more than
-/// just "has any lines": a doc that carries a translation beats an otherwise
-/// equal one without (so Musixmatch's English translation isn't shadowed by an
-/// earlier translation-less LRCLIB line-level doc), and word timing outranks
-/// translation. We scan until the best achievable score for the user's config
-/// is reached, then stop.
-pub async fn fetch_best<R: Runtime>(app: &AppHandle<R>, track: &TrackInfo) -> Option<LyricsDoc> {
+/// Returning all of them rather than only the winner is deliberate. Scoring
+/// collapses several independent qualities — word timing, a bundled translation
+/// — into one number, so the winner is not a superset of the losers: a
+/// word-level document with no translation outranks a line-level one that has
+/// one. Discarding the losers threw away the only copy of a translation the
+/// track had, and no later reload could recover it, because a reload re-runs
+/// this same race and discards it again.
+///
+/// The caller stores them all; `CacheEntry::best_doc` does the picking, so the
+/// choice can change later (the user shows translations, turns a provider on)
+/// without another fetch.
+///
+/// Scanning still stops early once the best achievable score for the user's
+/// config is reached — the extra documents are a by-product of the race, not a
+/// reason to run more of it.
+pub async fn fetch_all<R: Runtime>(app: &AppHandle<R>, track: &TrackInfo) -> Vec<LyricsDoc> {
     let cfg = config::load(app);
-    let want_trans = cfg.translation.wanted_lang().is_some();
+    let want_lang = cfg.translation.wanted_lang().map(|l| base_lang(&l));
     // Best score worth waiting for: word timing (+2 per tier) is preferred only
     // when configured; a translation adds +1 when the user shows translations.
-    let target = if cfg.prefer_word_level { 4 } else { 2 } + i32::from(want_trans);
+    let target = if cfg.prefer_word_level { 4 } else { 2 } + i32::from(want_lang.is_some());
 
-    let mut best: Option<LyricsDoc> = None;
+    let mut docs: Vec<LyricsDoc> = Vec::new();
     let mut best_score = -1;
 
     for &id in &cfg.provider_order {
@@ -53,31 +63,13 @@ pub async fn fetch_best<R: Runtime>(app: &AppHandle<R>, track: &TrackInfo) -> Op
         let Some(doc) = fetch_from(app, id, track).await else {
             continue;
         };
-        let score = doc_score(&doc, want_trans);
-        if score > best_score {
-            best_score = score;
-            best = Some(doc);
-        }
+        best_score = best_score.max(doc_score(&doc, want_lang.as_deref()));
+        docs.push(doc);
         if best_score >= target {
             break;
         }
     }
-    best
-}
-
-/// Rank a fetched doc. Timing dominates (word-level 4, synced 2, plain 0); a
-/// translation adds 1 when the user wants translations. This makes a translated
-/// line-level doc (3) beat a translation-less one (2) but never beat word timing.
-fn doc_score(doc: &LyricsDoc, want_trans: bool) -> i32 {
-    let timing = if doc.has_word_timing {
-        4
-    } else if !doc.lines.is_empty() {
-        2
-    } else {
-        0
-    };
-    let has_trans = want_trans && doc.lines.iter().any(|l| l.translation.is_some());
-    timing + i32::from(has_trans)
+    docs
 }
 
 /// Search a single provider explicitly (settings "search" tab).
@@ -140,6 +132,34 @@ pub fn candidate_key(cand: &SearchCandidate) -> String {
         duration_ms: cand.duration_ms.unwrap_or(0),
         source_app_id: String::new(),
     })
+}
+
+/// A stable string for every setting that changes which document the race
+/// returns: the providers actually consulted, in order, plus the two knobs that
+/// decide what "best" means.
+///
+/// Cached entries carry the fingerprint they were fetched under, so turning a
+/// provider on reaches tracks already in the cache instead of applying only to
+/// tracks played for the first time afterwards.
+pub fn fetch_fingerprint(cfg: &ProviderSettings) -> String {
+    let sources: Vec<&str> = cfg
+        .provider_order
+        .iter()
+        .filter(|&&id| provider_active(cfg, id))
+        .map(|id| match id {
+            SourceId::Lrclib => "lrclib",
+            SourceId::Musixmatch => "musixmatch",
+            SourceId::Netease => "netease",
+            SourceId::Applemusic => "applemusic",
+            SourceId::Manual => "manual",
+        })
+        .collect();
+    format!(
+        "{}|word={}|trans={}",
+        sources.join(","),
+        cfg.prefer_word_level,
+        cfg.translation.wanted_lang().unwrap_or_default(),
+    )
 }
 
 fn provider_active(cfg: &ProviderSettings, id: SourceId) -> bool {

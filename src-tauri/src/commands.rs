@@ -131,9 +131,13 @@ pub fn set_reserved_bar<R: Runtime>(
 pub fn export_lrc<R: Runtime>(app: AppHandle<R>, track_key: String) -> Result<bool, String> {
     use tauri_plugin_dialog::DialogExt;
 
+    let want_lang = crate::config::load(&app)
+        .translation
+        .wanted_lang()
+        .map(|l| crate::lyrics::base_lang(&l));
     let doc = Cache::new(&app)
         .load(&track_key)
-        .and_then(|e| e.best_doc())
+        .and_then(|e| e.best_doc(want_lang.as_deref()))
         .ok_or_else(|| "no cached lyrics for this track".to_string())?;
     let lrc = crate::parse::serialize_lrc(&doc);
 
@@ -161,22 +165,38 @@ pub async fn fetch_lyrics<R: Runtime>(
 ) -> Option<LyricsDoc> {
     let key = track_key(&track);
     let cache = Cache::new(&app);
+    // Read now, not inside the branches: the cache must be picked over with the
+    // same criteria the network race would use, or a cache hit silently returns
+    // a worse doc than a fetch would have.
+    let cfg = crate::config::load(&app);
+    let want_lang = cfg.translation.wanted_lang().map(|l| crate::lyrics::base_lang(&l));
+    let fingerprint = providers::fetch_fingerprint(&cfg);
 
-    // Cache-first unless the caller forces a refresh (reload hotkey).
+    // Cache-first unless the caller forces a refresh (reload hotkey), or the
+    // entry predates the current provider config — a hit written under other
+    // settings would pin the track to them forever.
     if !force {
-        if let Some(doc) = cache.load(&key).and_then(|e| e.best_doc()) {
-            return Some(doc);
+        if let Some(entry) = cache.load(&key) {
+            if entry.fetch_fingerprint == fingerprint {
+                if let Some(doc) = entry.best_doc(want_lang.as_deref()) {
+                    return Some(doc);
+                }
+            }
         }
     }
 
-    match providers::fetch_best(&app, &track).await {
-        Some(doc) => {
-            cache.store_doc(&key, &doc);
-            Some(doc)
-        }
-        // On a forced refresh with no network, fall back to whatever is cached.
-        None => cache.load(&key).and_then(|e| e.best_doc()),
+    let fetched = providers::fetch_all(&app, &track).await;
+    if !fetched.is_empty() {
+        cache.store_docs(&key, &fetched, Some(&fingerprint));
     }
+    // Pick across everything the track has ever had, not only what this fetch
+    // returned. A provider that times out on this run must not cost us a
+    // translation already on disk — which is what made a refresh able to come
+    // back with less than the cache already held.
+    //
+    // Falls through to the cache when the fetch found nothing at all, so no
+    // network means a stale line rather than a blank overlay.
+    cache.load(&key).and_then(|e| e.best_doc(want_lang.as_deref()))
 }
 
 #[tauri::command]
@@ -187,7 +207,7 @@ pub fn save_manual_lyrics<R: Runtime>(
 ) -> Result<LyricsDoc, String> {
     let doc = parse_lrc(&lrc_text, SourceId::Manual, &track_key).map_err(|e| e.to_string())?;
     let cache = Cache::new(&app);
-    cache.store_doc(&track_key, &doc);
+    cache.store_doc(&track_key, &doc, None);
     cache.set_preferred(&track_key, SourceId::Manual);
     let _ = app.emit(EVT_RELOAD, ());
     Ok(doc)
@@ -213,7 +233,7 @@ pub async fn apply_candidate<R: Runtime>(
         ..fetched
     };
     let cache = Cache::new(&app);
-    cache.store_doc(&track_key, &doc);
+    cache.store_doc(&track_key, &doc, None);
     cache.set_preferred(&track_key, doc.source);
     let _ = app.emit(EVT_RELOAD, ());
     Some(doc)

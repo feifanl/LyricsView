@@ -51,9 +51,45 @@ describe("annotate", () => {
     expect(ann.romaji).toMatch(/wǒ|wo/i);
   });
 
+  // The loaders below are asserted on their exact output, not merely truthiness,
+  // and on realistic lyric text rather than a bare word. `annotate` is
+  // fail-soft: a loader that throws yields `{}` and the overlay shows no
+  // sub-line, so a weak assertion passes while the feature is dead. Both traps
+  // have been sprung here — a single-word Korean case passed for months while
+  // every real lyric line romanized to "".
   it("produces romaja for Korean", async () => {
-    const ann = await annotate("안녕", ALL);
-    expect(ann.romaji).toBeTruthy();
+    const ann = await annotate("안녕하세요", ALL);
+    expect(ann.romaji).toBe("annyeonghaseyo");
+  });
+
+  it("romanizes Korean across spaces and punctuation", async () => {
+    // hangul-romanize returns "" for any input holding a single non-Hangul
+    // character, so a whole lyric line has to be romanized run by run.
+    // The exact spelling is the library's, not textbook Revised Romanization
+    // (no nasal assimilation, no disambiguating hyphen). What matters here is
+    // that all three words survive rather than the line collapsing to "".
+    const ann = await annotate("아무도 없는 방에서", ALL);
+    expect(ann.romaji).toBe("amudo eopneun bangeseo");
+  });
+
+  it("keeps non-Korean text inside a Korean line", async () => {
+    const ann = await annotate("사랑, love 사랑!", ALL);
+    expect(ann.romaji).toBe("sarang, love sarang!");
+  });
+
+  it("produces a transliteration for Russian", async () => {
+    const ann = await annotate("Привет", ALL);
+    expect(ann.romaji?.toLowerCase()).toBe("privet");
+  });
+
+  it("transliterates a full Russian line, not just one word", async () => {
+    const ann = await annotate("Привет, как дела", ALL);
+    expect(ann.romaji?.toLowerCase()).toBe("privet, kak dela");
+  });
+
+  it("produces pinyin across a full Chinese line", async () => {
+    const ann = await annotate("我爱你 宝贝", ALL);
+    expect(ann.romaji).toMatch(/wǒ.*ài.*nǐ.*bǎo.*bèi/);
   });
 
   it("returns empty when the script is disabled", async () => {
