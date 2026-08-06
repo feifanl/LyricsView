@@ -44,6 +44,7 @@ export class PlaybackClock {
   private lastReportPos = 0;
   private updates = 0;
   private sawPause = false; // did we observe a real pause since the last resume?
+  private explicitPauseAt = -Infinity; // when a pause event last arrived
 
   private raw(now: number): number {
     const elapsed = this.playing ? (now - this.reportAt) * this.rate : 0;
@@ -74,7 +75,8 @@ export class PlaybackClock {
     }
 
     const advanced = report.positionMs - this.lastReportPos;
-    if (!this.playing && advanced > ACTIVITY_MS) {
+    const pausedRecently = now - this.explicitPauseAt < PAUSE_GUARD_MS;
+    if (!this.playing && advanced > ACTIVITY_MS && !pausedRecently) {
       this.setPlaying(true, now);
     }
     if (advanced !== 0) {
@@ -98,6 +100,7 @@ export class PlaybackClock {
     this.lastReportPos = 0;
     this.updates = 0;
     this.sawPause = false;
+    this.explicitPauseAt = -Infinity;
   }
 
   /** True once we've had more than one report since the last reset, so the
@@ -127,6 +130,7 @@ export class PlaybackClock {
       this.posAtReport = this.raw(now);
       this.reportAt = now;
       this.sawPause = true;
+      this.explicitPauseAt = now;
     }
     this.playing = playing;
   }

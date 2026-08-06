@@ -103,3 +103,44 @@ describe("PlaybackClock", () => {
     expect(c.estimate(at)).toBeCloseTo(before, 0);
   });
 });
+
+describe("pause guard", () => {
+  it("stays paused when the player flushes a stale position on pause", () => {
+    const c = new PlaybackClock();
+    // Playing, but the player's reported position lags reality (Spotify).
+    c.update({ positionMs: 10_000, reportedAtMs: 0, rate: 1 }, 0);
+    c.update({ positionMs: 11_000, reportedAtMs: 1000, rate: 1 }, 1000);
+    c.setPlaying(true, 1000);
+    expect(c.isPlaying()).toBe(true);
+
+    // User pauses; the player then flushes its true position, seconds ahead.
+    c.setPlaying(false, 2000);
+    const frozen = c.estimate(2000);
+    c.update({ positionMs: 16_000, reportedAtMs: 2100, rate: 1 }, 2100);
+
+    expect(c.isPlaying()).toBe(false);
+    // Position may correct to the flushed truth, but must not keep advancing.
+    expect(c.estimate(9000)).toBe(c.estimate(3000));
+    expect(frozen).toBeGreaterThan(0);
+  });
+
+  it("still resumes on an explicit play event during the guard window", () => {
+    const c = new PlaybackClock();
+    c.update({ positionMs: 10_000, reportedAtMs: 0, rate: 1 }, 0);
+    c.setPlaying(true, 0);
+    c.setPlaying(false, 1000);
+    c.setPlaying(true, 1500); // explicit resume, well inside the guard
+    expect(c.isPlaying()).toBe(true);
+    expect(c.estimate(2500)).toBeGreaterThan(c.estimate(1500));
+  });
+
+  it("still infers playback from movement once the guard has expired", () => {
+    const c = new PlaybackClock();
+    c.update({ positionMs: 10_000, reportedAtMs: 0, rate: 1 }, 0);
+    c.setPlaying(true, 0);
+    c.setPlaying(false, 1000);
+    // Well past PAUSE_GUARD_MS: movement is real evidence again.
+    c.update({ positionMs: 20_000, reportedAtMs: 9000, rate: 1 }, 9000);
+    expect(c.isPlaying()).toBe(true);
+  });
+});
