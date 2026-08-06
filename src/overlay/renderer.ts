@@ -5,6 +5,7 @@ import type { AnimationStyle, LyricForm, LyricLinesCfg, RomanizationCfg } from "
 import { DEFAULT_LYRIC_LINES } from "../shared/settings";
 import type { LyricsDoc, LyricLine, LyricWord } from "../shared/types";
 import { synthesizeWords } from "./interpolate";
+import { furiganaFragment } from "./furigana";
 import { annotate, expectsRomaji, romanizationActive } from "./romanize";
 import { lineIndexAt, type LineSpan } from "./timeline";
 
@@ -297,7 +298,7 @@ export class Renderer {
     this.wordSpans = [];
     this.prevActive = -1;
     this.annVersion += 1;
-    this.container.innerHTML = "";
+    this.container.replaceChildren();
     this.currentWrapper = null;
     this.setVacant(true); // until the first line (or the plain note) is built
     this.missingNoticeLines.clear(); // notices are budgeted per track
@@ -337,7 +338,7 @@ export class Renderer {
     this.wordSpans = [];
     this.currentWrapper = null;
     this.annVersion += 1;
-    this.container.innerHTML = "";
+    this.container.replaceChildren();
     this.setVacant(!text);
     if (text) {
       const wrapper = document.createElement("div");
@@ -592,7 +593,10 @@ export class Renderer {
     // disabled for that line (whole-line highlight instead) — combining ruby
     // with progressive gradient fill is intentionally avoided.
     if (p.furiganaHtml) {
-      el.innerHTML = p.furiganaHtml;
+      // Built as nodes, never assigned as markup: kuroshiro interpolates the
+      // lyric into its ruby template unescaped, and lyrics come from providers
+      // whose catalogues anyone can edit. See furigana.ts.
+      el.replaceChildren(furiganaFragment(p.furiganaHtml));
       if (isCurrent) el.classList.add("no-fill");
     } else if (isCurrent) {
       this.buildWordSpans(el, p.words);
