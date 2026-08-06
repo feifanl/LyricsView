@@ -81,6 +81,22 @@ export const cmd = {
   setEditMode(enabled: boolean): Promise<void> {
     return invoke("set_edit_mode", { enabled });
   },
+  /** Reserve a desktop strip for the overlay, or release it with edge = null.
+   *  All values are physical pixels. Returns the rect the shell granted. */
+  setReservedBar(
+    edge: "top" | "bottom" | null,
+    mon: { left: number; top: number; right: number; bottom: number },
+    thickness: number,
+  ): Promise<[number, number, number, number] | null> {
+    return invoke("set_reserved_bar", {
+      edge,
+      monLeft: mon.left,
+      monTop: mon.top,
+      monRight: mon.right,
+      monBottom: mon.bottom,
+      thickness,
+    });
+  },
   toggleOverlay(): Promise<void> {
     return invoke("toggle_overlay");
   },

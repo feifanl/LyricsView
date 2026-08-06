@@ -235,8 +235,20 @@ button:focus-visible {
   font-size: 12.5px;
 }
 .field input[type="range"] {
-  min-width: 168px;
+  /* Small basis on purpose. Flexbox decides wrapping from flex-basis before it
+     distributes free space, so a basis wide enough to look right pushed the
+     value hint onto its own line in a narrow card — then grow filled the row
+     anyway. A small basis keeps label, slider and hint on one line; grow still
+     stretches the slider across whatever is left. */
+  flex: 1 1 60px;
+  min-width: 0;
   accent-color: var(--accent);
+}
+.field .hint {
+  /* Never wrap and never shrink: the hint is the slider's readout, and a value
+     is useless split across two lines. */
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 .field input[type="checkbox"] {
   width: 16px;

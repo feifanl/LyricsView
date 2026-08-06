@@ -9,6 +9,7 @@ import {
   PhysicalSize,
   type Monitor,
 } from "@tauri-apps/api/window";
+import { cmd } from "../shared/ipc";
 import type { Preset } from "../shared/settings";
 
 export interface Geometry {
@@ -39,12 +40,61 @@ export async function restoreGeometry(preset: Preset): Promise<void> {
     const mon = await pickMonitor(preset.monitor);
     if (!mon) return;
     const barH = Math.round(h);
+
+    // Reserving space hands the placement to the shell: it slides the strip
+    // clear of the taskbar and any other appbar, then positions the window
+    // itself. Doing our own setSize/setPosition afterwards would fight it.
+    if (preset.reserveSpace) {
+      try {
+        const granted = await cmd.setReservedBar(
+          dock,
+          {
+            left: mon.position.x,
+            top: mon.position.y,
+            right: mon.position.x + mon.size.width,
+            bottom: mon.position.y + mon.size.height,
+          },
+          barH,
+        );
+        if (granted) {
+          const [gl, gt, gr, gb] = granted;
+          // Place the window from the granted rect here, not in the Rust call.
+          // SHAppBarMessage moves it too, but on a re-apply something lands
+          // after that and leaves the window exactly one thickness above the
+          // strip it reserved. Setting it last from this side is what makes the
+          // position stick.
+          await win.setSize(new PhysicalSize(gr - gl, gb - gt));
+          await win.setPosition(new PhysicalPosition(gl, gt));
+
+          const pos = await win.outerPosition();
+          const size = await win.outerSize();
+          // Flat string on purpose: the console collapses nested arrays to
+          // "Array(4)" and these numbers are the whole point.
+          console.info(
+            `[overlay] strip edge=${dock} asked=${barH} ` +
+              `monitor=(${mon.position.x},${mon.position.y} ${mon.size.width}x${mon.size.height}) ` +
+              `granted=(${gl},${gt} -> ${gr},${gb} = ${gr - gl}x${gb - gt}) ` +
+              `window=(${pos.x},${pos.y} ${size.width}x${size.height})`,
+          );
+          return;
+        }
+        console.warn("[overlay] reserve returned no rect — falling back to overlap");
+      } catch (e) {
+        console.error("[overlay] could not reserve desktop space", e);
+      }
+      // Fall through and place it ourselves — an overlapping bar beats none.
+    } else {
+      await cmd.setReservedBar(null, { left: 0, top: 0, right: 0, bottom: 0 }, 0);
+    }
+
     await win.setSize(new PhysicalSize(mon.size.width, barH));
     const y = dock === "top" ? mon.position.y : mon.position.y + mon.size.height - barH;
     await win.setPosition(new PhysicalPosition(mon.position.x, y));
     return;
   }
 
+  // Float mode never reserves; release anything a docked preset left behind.
+  await cmd.setReservedBar(null, { left: 0, top: 0, right: 0, bottom: 0 }, 0);
   await win.setSize(new PhysicalSize(Math.round(w), Math.round(h)));
 
   const mon = await pickMonitor(preset.monitor);

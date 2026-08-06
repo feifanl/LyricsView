@@ -1,6 +1,7 @@
 // LyricsView Rust core: window/tray setup, plugin registration and the
 // #[tauri::command] surface. Providers and cache modules are added in later
 // milestones.
+mod appbar;
 mod cache;
 mod commands;
 mod config;
@@ -36,6 +37,7 @@ pub fn run() {
         .manage(AppState::default())
         .manage(SmtcState::default())
         .manage(HotkeyMap::default())
+        .manage(appbar::AppBarState::default())
         .setup(|app| {
             let handle = app.handle();
             tray::build_tray(handle)?;
@@ -80,6 +82,7 @@ pub fn run() {
             commands::current_track_key,
             commands::current_track,
             commands::resync_playback_state,
+            commands::set_reserved_bar,
             commands::export_lrc,
             commands::fetch_lyrics,
             commands::search_provider,
@@ -96,6 +99,14 @@ pub fn run() {
             commands::translate_lines,
             commands::share_line_image,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running LyricsView");
+        .build(tauri::generate_context!())
+        .expect("error while building LyricsView")
+        .run(|app, event| {
+            // An appbar registration outlives the process that made it: the work
+            // area stays shrunk, leaving a dead strip no window will use until
+            // the shell notices or explorer restarts. Hand it back on the way out.
+            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+                appbar::release_for(app);
+            }
+        });
 }

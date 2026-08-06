@@ -1,7 +1,9 @@
 // #[tauri::command] surface. Commands are added milestone by milestone; this
 // module currently exposes the window-interaction and SMTC subsets.
 use tauri::{AppHandle, Emitter, Manager, Runtime};
+use windows::Win32::Foundation::{HWND, RECT};
 
+use crate::appbar::{AppBarState, Edge};
 use crate::cache::Cache;
 use crate::lyrics::{LyricsDoc, SourceId};
 use crate::model::{CacheInfo, SearchCandidate, SessionInfo, TrackInfo, TrackMeta};
@@ -77,6 +79,51 @@ pub fn resync_playback_state<R: Runtime>(app: AppHandle<R>) {
     if let Some(state) = app.try_state::<SmtcState>() {
         state.clear_playback_dedupe();
     }
+}
+
+/// Reserve (or release) a strip of desktop work area for the overlay.
+///
+/// `edge` is "top", "bottom", or None to release. The monitor rect and thickness
+/// are physical pixels — the shell works in those, and the caller already knows
+/// which monitor the preset targets.
+///
+/// Returns the rect the shell granted, which is not always the one asked for: it
+/// slides the strip clear of the taskbar and any other appbar.
+#[tauri::command]
+pub fn set_reserved_bar<R: Runtime>(
+    app: AppHandle<R>,
+    edge: Option<String>,
+    mon_left: i32,
+    mon_top: i32,
+    mon_right: i32,
+    mon_bottom: i32,
+    thickness: i32,
+) -> Result<Option<(i32, i32, i32, i32)>, String> {
+    let state = app
+        .try_state::<AppBarState>()
+        .ok_or("appbar state missing")?;
+    let win = crate::window::overlay_window(&app).ok_or("overlay window missing")?;
+    let hwnd = HWND(win.hwnd().map_err(|e| e.to_string())?.0 as _);
+
+    let Some(edge) = edge.as_deref().and_then(Edge::parse) else {
+        state.release(hwnd);
+        return Ok(None);
+    };
+    if thickness <= 0 {
+        state.release(hwnd);
+        return Ok(None);
+    }
+
+    let mon = RECT {
+        left: mon_left,
+        top: mon_top,
+        right: mon_right,
+        bottom: mon_bottom,
+    };
+    let rc = state
+        .reserve(hwnd, edge, mon, thickness)
+        .ok_or("the shell refused the appbar registration")?;
+    Ok(Some((rc.left, rc.top, rc.right, rc.bottom)))
 }
 
 /// Export a cached track's lyrics as an `.lrc` file via a save dialog.

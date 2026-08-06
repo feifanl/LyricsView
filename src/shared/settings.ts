@@ -74,6 +74,15 @@ export interface Preset {
   monitor: number | null;
   /** Ignored while docked; the bar is pinned to the monitor edge. */
   dock: DockMode;
+  /** Docked only: reserve desktop work area so maximised windows lay out around
+   *  the strip instead of under it. Without this a docked bar always covers
+   *  something — the taskbar at the bottom, browser tabs at the top. */
+  reserveSpace?: boolean;
+  /** Docked only: fill behind the whole bar, not just the lyric pill. At 0 the
+   *  strip is transparent and the desktop wallpaper shows through; at 1 it is
+   *  `stripColor` solid. Separate from `backgroundColor`, which is the pill. */
+  stripColor?: string;
+  stripOpacity?: number;
   position: { x: number; y: number } | null;
   size: { w: number; h: number };
   font: { family: string; sizePx: number; weight: number };
@@ -192,11 +201,17 @@ function glassBarPreset(): Preset {
     name: "Glass Bar",
     monitor: null,
     dock: "top",
+    // Reserve the strip out of the box: a docked bar that merely floats on top
+    // covers browser tabs, which is the first thing anyone notices.
+    reserveSpace: true,
     position: null,
-    // 72 px needs a bar tall enough to hold it: the renderer scales text down to
-    // fit the box, so raising the size without the height would change nothing.
-    size: { w: 1120, h: 150 },
-    font: { family: "Segoe UI", sizePx: 72, weight: 600 },
+    size: { w: 1120, h: 64 },
+    font: { family: "Verdana", sizePx: 20, weight: 400 },
+    // Solid by default, in a tone that matches the system chrome — a docked bar
+    // reads as part of the desktop rather than a window parked over wallpaper.
+    // `stripColor` is left unset so it follows the light/dark theme at runtime;
+    // drop the opacity to let the wallpaper through.
+    stripOpacity: 1,
     // Sampled from GitHub's own green. Unsung text stays near-white so the
     // karaoke sweep is the only thing carrying colour.
     colors: { base: "#ffffffe6", fill: "#5fed83", textShadow: false, outline: false },
@@ -206,7 +221,7 @@ function glassBarPreset(): Preset {
     background: "glass",
     backgroundColor: "rgba(18,18,26,0.28)",
     contextLines: { before: 0, after: 0 },
-    lineSpacing: 1.15,
+    lineSpacing: 1,
     animation: "fill",
   };
 }

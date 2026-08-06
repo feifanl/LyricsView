@@ -8,6 +8,13 @@ import { LyricPreview } from "../preview";
 import type { SettingsCtx, Tab } from "../tab";
 import { button, card, checkbox, colorInput, el, field, numberInput, range, segmented, select } from "../ui";
 
+/** Same default the overlay uses when no strip colour is set (see apply.ts), so
+ *  the swatch shows what is actually on screen rather than an arbitrary value. */
+function systemChromeHex(): string {
+  const dark = window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true;
+  return dark ? "#202020" : "#f3f3f3";
+}
+
 // One live preview instance; cancel the previous loop when the tab re-renders.
 let live: LyricPreview | null = null;
 
@@ -214,6 +221,41 @@ function render(ctx: SettingsCtx): HTMLElement {
         ),
       ),
       field("Bar height", numberInput(working.size.h, (v) => edit((p) => (p.size.h = v)), { min: 40, max: 400 })),
+      ...(docked
+        ? [
+            field(
+              "Reserve space",
+              checkbox(working.reserveSpace ?? false, (v) =>
+                void ctx.update((n) => (n.presets[n.activePreset]!.reserveSpace = v)),
+              ),
+            ),
+            el("p", {
+              className: "card-note",
+              textContent:
+                "Give the bar its own strip of desktop, like the taskbar. Maximised windows resize around it instead of being covered, and the bar no longer sits on top of the taskbar or your browser tabs.",
+            }),
+            field(
+              "Strip fill",
+              colorInput(working.stripColor ?? systemChromeHex(), (v) =>
+                edit((p) => (p.stripColor = v)),
+              ),
+            ),
+            field(
+              "Strip opacity",
+              range(working.stripOpacity ?? 1, 0, 1, 0.05, (v) =>
+                edit((p) => (p.stripOpacity = v)),
+              ),
+              (working.stripOpacity ?? 1) === 0
+                ? "wallpaper"
+                : (working.stripOpacity ?? 1).toFixed(2),
+            ),
+            el("p", {
+              className: "card-note",
+              textContent:
+                "Fills the whole bar, behind the lyric box. At 0 the wallpaper shows through. Left untouched the colour follows your system light/dark theme.",
+            }),
+          ]
+        : []),
       field("Lines above", contextSelect(working.contextLines.before, (v) => edit((p) => (p.contextLines.before = v)))),
       field("Lines below", contextSelect(working.contextLines.after, (v) => edit((p) => (p.contextLines.after = v)))),
     ]),

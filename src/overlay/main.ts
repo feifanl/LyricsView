@@ -169,6 +169,9 @@ function sameGeometry(a: Settings | null, b: Settings): boolean {
   const pb = activePreset(b);
   return (
     (pa.dock ?? "float") === (pb.dock ?? "float") &&
+    // Reserving desktop space is applied by restoreGeometry, so a change here
+    // has to count as a geometry change or toggling it does nothing at all.
+    (pa.reserveSpace ?? false) === (pb.reserveSpace ?? false) &&
     pa.monitor === pb.monitor &&
     pa.size.w === pb.size.w &&
     pa.size.h === pb.size.h &&

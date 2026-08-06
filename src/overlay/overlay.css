@@ -42,6 +42,15 @@ body {
   transition: opacity 400ms ease;
 }
 
+/* Docked bars can fill their whole strip, so the reserved space reads as part of
+   the desktop chrome rather than a window floating over the wallpaper. Float
+   presets never get this — a filled rectangle following the lyrics around is the
+   opposite of what float is for. */
+body.docked .overlay-root {
+  background: var(--strip-bg, transparent);
+  transition: opacity 400ms ease, background 200ms ease;
+}
+
 /* Auto-hide: fade the whole overlay out while paused. */
 body.faded .overlay-root {
   opacity: 0 !important;
