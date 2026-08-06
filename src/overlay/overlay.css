@@ -202,8 +202,12 @@ body.faded .overlay-root {
   text-align: right;
   line-height: 1.15;
 }
+/* Context sub-lines track .lyric-line.context: same 0.72 step down, so a
+   neighbour's romaji/translation stays subordinate to the sung line's rather
+   than matching it in size and competing for attention. */
 .romaji-line.context {
   opacity: 0.35;
+  font-size: calc(var(--sub-font-size) * 0.72);
 }
 ruby rt {
   font-size: 0.5em;
@@ -220,6 +224,7 @@ ruby rt {
 }
 .trans-line.context {
   opacity: 0.35;
+  font-size: calc(var(--sub-font-size) * 0.72);
 }
 
 /* "no romaji/translation found" — quieter and smaller than a real sub-line.

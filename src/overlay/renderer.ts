@@ -179,12 +179,19 @@ export class Renderer {
    *  columns. They're clamped by the row's max-width, so their rects report the
    *  clipped width — scrollWidth is what they'd actually like to be. */
   private rowNaturalWidth(): number {
-    const row = this.container.querySelector<HTMLElement>(".stack:not(.leaving) .sub-row.has-sides");
-    if (!row) return 0;
-    const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
-    let w = 0;
-    for (const child of row.children) w += Math.max(child.scrollWidth, child.getBoundingClientRect().width);
-    return w + gap * Math.max(0, row.children.length - 1);
+    // Widest row, not the first: context lines carry their own forms now, so a
+    // stack holds several. Sizing to the first would clip whichever neighbour
+    // happened to be longer than the current line.
+    let widest = 0;
+    for (const row of this.container.querySelectorAll<HTMLElement>(
+      ".stack:not(.leaving) .sub-row.has-sides",
+    )) {
+      const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+      let w = 0;
+      for (const child of row.children) w += Math.max(child.scrollWidth, child.getBoundingClientRect().width);
+      widest = Math.max(widest, w + gap * Math.max(0, row.children.length - 1));
+    }
+    return widest;
   }
 
   /** Height of the tallest live stack. Measured from the element, not the
@@ -452,17 +459,7 @@ export class Renderer {
       this.layout.after,
     );
     for (let i = start; i <= end; i++) {
-      const p = this.prepared[i]!;
-      if (i !== idx) {
-        // Romaji/translation hang off the CURRENT line only; on the faint
-        // prev/next context lines they'd just add noise.
-        const el = document.createElement("div");
-        el.className = "lyric-line context";
-        this.buildLine(el, p, false);
-        wrapper.appendChild(el);
-        continue;
-      }
-      this.buildCurrentForms(wrapper, p, idx);
+      this.buildForms(wrapper, this.prepared[i]!, i, i === idx);
     }
 
     // A crossfade only makes sense between two different lines. Fading a line
@@ -487,13 +484,25 @@ export class Renderer {
     if (!sameLine) requestAnimationFrame(() => wrapper.classList.add("mounted"));
   }
 
-  /** Build the current line's forms (romaji / original / translation) in the
-   *  user's chosen order and layout, appending row(s) to the stack wrapper:
+  /** Build a line's forms (romaji / original / translation) in the user's chosen
+   *  order and layout, appending row(s) to the stack wrapper:
    *   - inline:  all forms on one row (never grows the stack taller).
    *   - stacked: each form on its own row (bulkier, wraps less).
-   *   - single:  just one form, chosen by the hotkey-driven active form. */
-  private buildCurrentForms(wrapper: HTMLElement, p: PreparedLine, idx: number): void {
-    this.wordSpans = [];
+   *   - single:  just one form, chosen by the hotkey-driven active form.
+   *
+   *  Context lines get the same forms as the current one, dimmed. They used to
+   *  get the original text alone, so the romaji and translation of a line
+   *  appeared only at the instant it became current — the reader had no chance to
+   *  look ahead, and the sub-lines popped in and out as the song advanced.
+   *  Everything is romanized up front (see annotateAll), so this costs nothing
+   *  but the nodes.
+   *
+   *  `isCurrent` also decides what only the sung line may have: the karaoke word
+   *  spans, and the "no romaji found" notice — an admission of a gap, which on a
+   *  faint neighbour is noise. */
+  private buildForms(wrapper: HTMLElement, p: PreparedLine, idx: number, isCurrent: boolean): void {
+    if (isCurrent) this.wordSpans = [];
+    const tone = isCurrent ? "current" : "context";
 
     let romaji = p.romaji;
     let translation: string | undefined;
@@ -521,28 +530,29 @@ export class Renderer {
       if (!this.lyricLines.enabled[form]) continue;
       if (form === "original") {
         const el = document.createElement("div");
-        el.className = "lyric-line current";
-        this.buildLine(el, p, true); // populates this.wordSpans
+        el.className = `lyric-line ${tone}`;
+        this.buildLine(el, p, isCurrent); // populates this.wordSpans when current
         add(form, el);
       } else if (form === "romaji") {
-        if (romaji) add(form, this.subItem(romaji, "romaji-line"));
+        if (romaji) add(form, this.subItem(romaji, "romaji-line", tone));
         else if (
+          isCurrent &&
           !p.furiganaHtml &&
           expectsRomaji(p.line.text, this.romanization) &&
           this.allowMissingNotice(idx)
         ) {
           // Only when the line's own script should have romanized (a real miss).
-          add(form, this.subItem("no romaji found", "missing-line"));
+          add(form, this.subItem("no romaji found", "missing-line", tone));
         }
       } else if (form === "translation") {
-        if (translation) add(form, this.subItem(translation, "trans-line"));
+        if (translation) add(form, this.subItem(translation, "trans-line", tone));
       }
     }
     // Never show a totally empty box: fall back to the original line.
     if (items.length === 0) {
       const el = document.createElement("div");
-      el.className = "lyric-line current";
-      this.buildLine(el, p, true);
+      el.className = `lyric-line ${tone}`;
+      this.buildLine(el, p, isCurrent);
       add("original", el);
     }
 
@@ -587,9 +597,9 @@ export class Renderer {
     return true;
   }
 
-  private subItem(text: string, cls: string): HTMLElement {
+  private subItem(text: string, cls: string, tone: "current" | "context"): HTMLElement {
     const el = document.createElement("div");
-    el.className = `${cls} current`;
+    el.className = `${cls} ${tone}`;
     el.textContent = text;
     return el;
   }
