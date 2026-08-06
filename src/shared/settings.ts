@@ -93,6 +93,9 @@ export interface Preset {
 export interface Settings {
   /** Bumped to migrate built-in presets/defaults on load. */
   schemaVersion: number;
+  /** Set once the overlay has told the user that translations need a provider
+   *  they haven't enabled. Without it the same note fires on every song. */
+  translationHintShown: boolean;
   activePreset: string;
   presets: Record<string, Preset>;
   providerOrder: SourceId[];
@@ -190,8 +193,10 @@ function glassBarPreset(): Preset {
     monitor: null,
     dock: "top",
     position: null,
-    size: { w: 1120, h: 88 },
-    font: { family: "Segoe UI", sizePx: 27, weight: 600 },
+    // 72 px needs a bar tall enough to hold it: the renderer scales text down to
+    // fit the box, so raising the size without the height would change nothing.
+    size: { w: 1120, h: 150 },
+    font: { family: "Segoe UI", sizePx: 72, weight: 600 },
     // Sampled from GitHub's own green. Unsung text stays near-white so the
     // karaoke sweep is the only thing carrying colour.
     colors: { base: "#ffffffe6", fill: "#5fed83", textShadow: false, outline: false },
@@ -209,6 +214,7 @@ function glassBarPreset(): Preset {
 export function defaultSettings(): Settings {
   return {
     schemaVersion: SCHEMA_VERSION,
+    translationHintShown: false,
     activePreset: "Glass Bar",
     presets: {
       "Glass Bar": glassBarPreset(),
@@ -216,15 +222,21 @@ export function defaultSettings(): Settings {
       Karaoke: karaokePreset(),
     },
     providerOrder: ["lrclib", "musixmatch", "netease", "applemusic"],
-    // Only LRCLIB is on out of the box. It is an open, public, no-auth lyrics
-    // API meant to be used this way. The others reach undocumented endpoints
-    // belonging to commercial services — using them is the user's decision to
-    // make with their own account, not a default this app makes for them.
+    // LRCLIB is an open, public, no-auth lyrics API meant to be used this way.
+    // NetEase is on with it because it carries the word-level timings and the
+    // bundled translations that LRCLIB has none of — with both off, a default
+    // install shows no translated line for any song, which reads as a broken
+    // feature rather than a disabled one.
+    // Apple Music stays off because it needs the user's own subscription tokens.
+    // Musixmatch needs no account at all — it is off because it is the most
+    // exposed of the undocumented endpoints, and that is a choice worth making
+    // deliberately rather than by default. The settings tab offers it in one
+    // click, since it is the only source of non-Chinese translations.
     // Existing configs keep whatever the user already chose (see mergeDefaults).
     providersEnabled: {
       lrclib: true,
       musixmatch: false,
-      netease: false,
+      netease: true,
       applemusic: false,
       manual: true,
     },

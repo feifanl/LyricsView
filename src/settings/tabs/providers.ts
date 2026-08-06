@@ -21,13 +21,14 @@ function render(ctx: SettingsCtx): HTMLElement {
     el("div", {
       className: "notice",
       textContent:
-        "LRCLIB is on by default: it is an open, public lyrics API meant to be used this way. " +
-        "Musixmatch, NetEase and Apple Music are off by default — they reach undocumented " +
-        "endpoints belonging to commercial services, so enabling them is your call and is " +
+        "LRCLIB and NetEase are on by default — LRCLIB for line-level lyrics, NetEase for " +
+        "word-level timings and Chinese translations. Musixmatch, NetEase and Apple Music all " +
+        "reach undocumented endpoints belonging to commercial services, so using them is " +
         "subject to those services' terms. They can break or rate-limit at any time, and they " +
         "fail silently and fall back to the next provider.",
     }),
   );
+  root.append(musixmatchCallout(ctx));
 
   root.append(section("Fallback order"));
   s.providerOrder.forEach((id, i) => {
@@ -71,6 +72,35 @@ function render(ctx: SettingsCtx): HTMLElement {
   root.append(cacheField());
 
   return root;
+}
+
+/**
+ * One-click enable for Musixmatch, shown only while it is off.
+ *
+ * It is the only provider that supplies translations outside Chinese and needs
+ * nothing from the user — no account, no token, just an anonymous handshake. It
+ * ships disabled anyway, so without saying this plainly the translated line is
+ * blank on most songs with no indication that a switch exists.
+ */
+function musixmatchCallout(ctx: SettingsCtx): HTMLElement {
+  const wrap = el("div", { className: "notice" });
+  if (ctx.settings.providersEnabled.musixmatch) {
+    wrap.textContent =
+      "Musixmatch is on: word-by-word timing and English translations, no account needed.";
+    return wrap;
+  }
+  wrap.append(
+    el("span", {
+      textContent:
+        "Translations in languages other than Chinese come from Musixmatch, which is off. " +
+        "It needs no account or token. Enabling it also gives word-by-word karaoke timing on " +
+        "most songs. Already-cached songs need a reload (Alt+Shift+R) to pick it up.",
+    }),
+    button("Enable Musixmatch", () => {
+      void ctx.patch((n) => (n.providersEnabled.musixmatch = true)).then(() => ctx.rerender());
+    }),
+  );
+  return wrap;
 }
 
 function moveItem<T>(arr: T[], i: number, dir: -1 | 1): void {

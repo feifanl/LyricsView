@@ -1,7 +1,7 @@
 // Overlay bootstrap. Wires SMTC events, the interpolated clock, the karaoke
 // renderer, edit mode, per-track offset and global-hotkey actions.
 import { activePreset, type HotkeyAction, type Settings } from "../shared/settings";
-import { loadSettings } from "../shared/store";
+import { loadSettings, saveSettings } from "../shared/store";
 import {
   cmd,
   onHotkey,
@@ -284,7 +284,13 @@ async function maybeTranslate(doc: LyricsDoc): Promise<void> {
   // translator to render English as English gets the line back verbatim.
   const missing = doc.lines.filter((l) => !l.translation && needsTranslation(l.text, targetLang));
   if (missing.length === 0) return; // built-in translations cover everything
-  if (!aiEnabled) return; // no AI fallback configured — show what we have
+  if (!aiEnabled) {
+    // Nothing can fill these lines: no key, and whichever providers are on
+    // carry no usable translation. Say so once, rather than leaving a blank
+    // that reads as the feature being broken.
+    void hintTranslationSource();
+    return;
+  }
   try {
     const filled = await cmd.translateLines(missing.map((l) => l.text));
     if (currentDoc !== doc) return;
@@ -300,6 +306,29 @@ async function maybeTranslate(doc: LyricsDoc): Promise<void> {
     renderer.setTranslations(merged);
   } catch (e) {
     console.error("[overlay] translate failed", e);
+  }
+}
+
+/**
+ * Tell the user once that the translated line needs a source they have not
+ * turned on.
+ *
+ * Musixmatch is the only enabled-by-nothing provider that carries translations
+ * in languages other than Chinese, and it ships disabled. Without this note the
+ * symptom is a permanently blank translation line and no clue why — the state
+ * this app was in when its own author could not work out what had broken.
+ */
+async function hintTranslationSource(): Promise<void> {
+  if (!currentSettings || currentSettings.translationHintShown) return;
+  if (currentSettings.providersEnabled.musixmatch) return; // already on; nothing to suggest
+  currentSettings.translationHintShown = true; // set first: this must fire once, not per song
+  toast("no translation for this song — enable Musixmatch in Settings → Providers");
+  try {
+    const s = await loadSettings();
+    s.translationHintShown = true;
+    await saveSettings(s);
+  } catch (e) {
+    console.error("[overlay] could not persist translation hint", e);
   }
 }
 

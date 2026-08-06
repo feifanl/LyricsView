@@ -20,7 +20,7 @@ _(placeholder — add overlay/settings screenshots here)_
 ## Features
 
 - Word-by-word karaoke fill driven by an interpolated, drift-corrected playback clock.
-- Providers with fallback: **LRCLIB** (line-level, the only one enabled by default) →
+- Providers with fallback: **LRCLIB** (line-level) → 
   **Musixmatch** richsync (word-level) → **NetEase** yrc (word-level, strong CJK) →
   **Apple Music** syllable TTML. Line-only lyrics still get smooth per-word fill via
   interpolation.
@@ -59,21 +59,24 @@ The kuromoji dictionary (for Japanese) is copied into `public/kuromoji-dict` by 
 
 ## Lyrics providers
 
-**LRCLIB is the only provider enabled out of the box.** It is an open, public,
-no-authentication lyrics API built to be used exactly this way.
+**LRCLIB and NetEase are enabled out of the box.** LRCLIB is an open, public,
+no-authentication lyrics API built to be used exactly this way. NetEase supplies the
+word-level timings and bundled translations that LRCLIB does not carry.
 
-The other three reach undocumented endpoints belonging to commercial services. They
-ship **disabled**, and turning one on is your decision, made with your own account,
-under that service's terms:
+Musixmatch and Apple Music ship **disabled**. Musixmatch needs no account — it is off
+because it is the most exposed of the undocumented endpoints, not because it is hard to
+use. Apple Music needs your own subscription tokens. Musixmatch, NetEase and Apple Music
+all reach undocumented endpoints belonging to commercial services, and using them is
+subject to those services' terms:
 
 | Provider | Default | Notes |
 |---|---|---|
 | LRCLIB | **on** | Open public API, line-level |
-| Musixmatch | off | Undocumented endpoint; word-level richsync |
-| NetEase | off | Undocumented endpoint; word-level yrc, strong CJK |
+| NetEase | **on** | Undocumented endpoint; word-level yrc, bundled translations, strong CJK |
+| Musixmatch | off | Undocumented endpoint; word-level richsync **and translations**; no account needed |
 | Apple Music | off | Requires your own subscription tokens |
 
-Enable them in Settings → Providers.
+Change any of them in Settings → Providers.
 
 ## Apple Music (optional, off by default)
 
@@ -95,7 +98,18 @@ Tokens are stored locally in plain text and are only ever sent to Apple's own AP
 Settings → Language → Translation. Choose DeepL, Google Cloud Translation, or an
 OpenAI-compatible endpoint (configurable base URL + model), paste your API key, set a
 target language. Lines are translated once per track in a single batched request and
-cached. NetEase's bundled translation (`tlyric`) is shown for free when available.
+cached.
+
+Without a key, translations come from whichever provider supplies them:
+
+- **Musixmatch** carries translations in many languages, including English. It needs no
+  account, but ships disabled — enable it in Settings → Providers.
+- **NetEase** carries `tlyric`, written for a Chinese-reading audience. It only appears
+  when your target language is Chinese; a Chinese translation is not shown to someone
+  reading English.
+
+With neither enabled and no API key, the translated line stays blank. The overlay says so
+once rather than leaving you guessing.
 
 ## Global hotkeys (defaults, rebindable in Settings)
 
@@ -144,8 +158,8 @@ bundled, uploaded, or redistributed. There is no telemetry, no account, and no
 auto-update.
 
 You are responsible for your own use of the third-party services this client can reach,
-including any credentials you supply and the terms those services impose. Only LRCLIB
-is enabled by default; the rest are opt-in for that reason.
+including any credentials you supply and the terms those services impose. LRCLIB
+and NetEase are enabled by default; the rest are opt-in for that reason.
 
 ## License
 
