@@ -205,7 +205,7 @@ function glassBarPreset(): Preset {
     // covers browser tabs, which is the first thing anyone notices.
     reserveSpace: true,
     position: null,
-    size: { w: 1120, h: 64 },
+    size: { w: 1120, h: 50 },
     font: { family: "Verdana", sizePx: 20, weight: 400 },
     // Solid by default, in a tone that matches the system chrome — a docked bar
     // reads as part of the desktop rather than a window parked over wallpaper.

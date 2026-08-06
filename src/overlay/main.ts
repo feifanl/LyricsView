@@ -28,7 +28,7 @@ import { PlaybackClock } from "./clock";
 // module is tree-shaken out and `window.__diag` never reaches users.
 import * as diag from "./diag";
 import { initEditMode } from "./edit";
-import { restoreGeometry } from "./geometry";
+import { releaseStrip, restoreGeometry } from "./geometry";
 import { Renderer } from "./renderer";
 import { shareCard } from "./share";
 import {
@@ -116,7 +116,56 @@ function scheduleAutoHide(): void {
   }
 }
 
+/**
+ * How long playback must stay stopped before the desktop strip is handed back.
+ *
+ * Releasing it re-lays-out every maximised window on the desktop, so doing it
+ * the instant a song is paused would shuffle the user's screen twice for a
+ * ten-second interruption. Long enough to ride out a pause, short enough that a
+ * finished listening session gives the space back on its own.
+ */
+const RESERVE_RELEASE_MS = 20_000;
+let reserveTimer = 0;
+let stripReserved = false;
+
+/** Whether the active preset wants a reserved strip at all. */
+function stripWanted(): boolean {
+  if (!currentSettings) return false;
+  const p = activePreset(currentSettings);
+  return (p.dock ?? "float") !== "float" && (p.reserveSpace ?? false);
+}
+
+/**
+ * Claim or release the desktop strip. Held only while a song is actually
+ * playing: the reservation displaces every maximised window on the desktop, and
+ * paying that cost for a bar showing nothing — for however long the app happens
+ * to be open — is not a trade the user asked for.
+ */
+async function setStripReserved(on: boolean): Promise<void> {
+  if (!currentSettings || stripReserved === on) return;
+  stripReserved = on;
+  try {
+    if (on) await restoreGeometry(activePreset(currentSettings), true);
+    else await releaseStrip();
+  } catch (e) {
+    stripReserved = !on; // failed: let the next transition try again
+    console.error("[overlay] could not update the reserved strip", e);
+  }
+}
+
+/** Follow playback: reserve on play, release after a pause outlives the grace. */
+function syncStripReservation(playing: boolean): void {
+  window.clearTimeout(reserveTimer);
+  if (!stripWanted()) {
+    void setStripReserved(false);
+    return;
+  }
+  if (playing) void setStripReserved(true);
+  else reserveTimer = window.setTimeout(() => void setStripReserved(false), RESERVE_RELEASE_MS);
+}
+
 function onPlayingChanged(playing: boolean): void {
+  syncStripReservation(playing);
   if (emptyState) return; // nothing to show — let the empty-state fade stand
   if (playing) {
     window.clearTimeout(hideTimer);
@@ -544,7 +593,7 @@ async function boot(): Promise<void> {
   applyLayout(settings);
   initEditMode();
   renderer.onFit = requestWidth;
-  void restoreGeometry(activePreset(settings)).then(() => configureAutoWidth(settings));
+  void restoreGeometry(activePreset(settings), stripReserved).then(() => configureAutoWidth(settings));
 
   if (import.meta.env.DEV) {
     diag.install({
@@ -620,7 +669,13 @@ async function boot(): Promise<void> {
     // snapped the overlay back to the preset's saved rectangle, undoing a drag
     // and re-triggering the auto-width resize loop.
     if (geometryChanged) {
-      void restoreGeometry(activePreset(s)).then(() => configureAutoWidth(s));
+      void restoreGeometry(activePreset(s), stripReserved && stripWanted()).then(() =>
+        configureAutoWidth(s),
+      );
+      // The new preset may not want a strip at all (Reserve space turned off, or
+      // a float preset selected). restoreGeometry hands the space back, but the
+      // flag has to follow or the next play would think it is still held.
+      syncStripReservation(clock.isPlaying());
     }
     // Target-language change re-gates translations from a fresh (cached) fetch:
     // gating strips them destructively, so we can't restore from currentDoc.

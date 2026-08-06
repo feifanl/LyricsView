@@ -21,13 +21,16 @@
 use std::sync::Mutex;
 
 use windows::Win32::Foundation::{HWND, LPARAM, RECT};
+use windows::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromRect,
+};
 use windows::Win32::UI::Shell::{
     ABE_BOTTOM, ABE_TOP, ABM_NEW, ABM_QUERYPOS, ABM_REMOVE, ABM_SETPOS, APPBARDATA,
     SHAppBarMessage,
 };
-use windows::Win32::UI::WindowsAndMessaging::{
-    HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos,
-};
+// The window is positioned by the caller, not here: reserving space and placing
+// the bar are separate decisions, and having both sides move the window is what
+// left it one step out of position on a re-apply.
 
 /// Which screen edge the strip occupies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,6 +61,24 @@ impl Edge {
 #[derive(Default)]
 pub struct AppBarState(Mutex<bool>);
 
+/// The work area of the monitor `mon` sits on: the monitor minus the taskbar and
+/// every other appbar currently registered. Queried live, so it reflects
+/// whatever the user's taskbar is doing — any edge, any thickness, any DPI —
+/// rather than assuming anything about its size.
+///
+/// `None` if the shell won't answer, in which case the caller falls back to the
+/// monitor rect and simply overlaps.
+fn work_area(mon: RECT) -> Option<RECT> {
+    let hmon = unsafe { MonitorFromRect(&mon, MONITOR_DEFAULTTONEAREST) };
+    let mut mi = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    unsafe { GetMonitorInfoW(hmon, &mut mi) }
+        .as_bool()
+        .then_some(mi.rcWork)
+}
+
 fn data(hwnd: HWND) -> APPBARDATA {
     APPBARDATA {
         cbSize: std::mem::size_of::<APPBARDATA>() as u32,
@@ -76,53 +97,68 @@ impl AppBarState {
         let mut held = self.0.lock().ok()?;
         let mut abd = data(hwnd);
 
-        if !*held {
-            // Zero means failure here, unlike the position calls below.
-            if unsafe { SHAppBarMessage(ABM_NEW, &mut abd) } == 0 {
-                return None;
-            }
-            *held = true;
+        // Always start from no reservation of our own.
+        //
+        // ABM_QUERYPOS answers "where can this strip go, given the space already
+        // spoken for" — and the space we are currently holding counts. Re-applying
+        // on top of a live registration therefore asked the shell to fit the strip
+        // beside itself, and it obliged, sliding the new rect clear of the old one.
+        // Every re-apply (a settings change, a preset switch, a dock toggle) moved
+        // the bar another notch inward, leaving a widening band of bare desktop
+        // between the bar and the taskbar.
+        if *held {
+            unsafe { SHAppBarMessage(ABM_REMOVE, &mut abd) };
+            *held = false;
+            abd = data(hwnd);
         }
+        // Zero means failure here, unlike the position calls below.
+        if unsafe { SHAppBarMessage(ABM_NEW, &mut abd) } == 0 {
+            return None;
+        }
+        *held = true;
 
-        abd.uEdge = edge.as_u32();
-        abd.rc = match edge {
+        // Ask for a band flush against the work area — it already excludes the
+        // taskbar and every other appbar, so this claims exactly what the bar
+        // occupies and nothing more.
+        //
+        // The obvious alternative, requesting the monitor edge and letting
+        // ABM_QUERYPOS slide the strip clear, over-claims: the shell answers
+        // with the taskbar's *registered* rect, which on Windows 11 reaches
+        // further up the screen than the work area it actually costs. Deriving
+        // our thickness from that edge put the strip's inner edge too high, and
+        // ABM_SETPOS reserves from there to the screen — far more than the bar
+        // uses.
+        let area = work_area(mon).unwrap_or(mon);
+        let strip = match edge {
             Edge::Top => RECT {
-                left: mon.left,
-                top: mon.top,
-                right: mon.right,
-                bottom: mon.top + thickness,
+                left: area.left,
+                top: area.top,
+                right: area.right,
+                bottom: area.top + thickness,
             },
             Edge::Bottom => RECT {
-                left: mon.left,
-                top: mon.bottom - thickness,
-                right: mon.right,
-                bottom: mon.bottom,
+                left: area.left,
+                top: area.bottom - thickness,
+                right: area.right,
+                bottom: area.bottom,
             },
         };
 
-        // The shell may slide the strip to clear the taskbar; it only moves the
-        // edge it owns, so restore our thickness against whatever it returned.
+        abd.uEdge = edge.as_u32();
+        abd.rc = strip;
+        // Sent so the shell can object, but its answer is not what we commit:
+        // it replies with that same over-reaching taskbar edge.
         unsafe { SHAppBarMessage(ABM_QUERYPOS, &mut abd) };
-        match edge {
-            Edge::Top => abd.rc.bottom = abd.rc.top + thickness,
-            Edge::Bottom => abd.rc.top = abd.rc.bottom - thickness,
-        }
-
+        abd.rc = strip;
         unsafe { SHAppBarMessage(ABM_SETPOS, &mut abd) };
 
-        let rc = abd.rc;
-        let _ = unsafe {
-            SetWindowPos(
-                hwnd,
-                Some(HWND_TOPMOST),
-                rc.left,
-                rc.top,
-                rc.right - rc.left,
-                rc.bottom - rc.top,
-                SWP_NOACTIVATE | SWP_NOZORDER,
-            )
-        };
-        Some(rc)
+        // Return the strip we asked for, not `abd.rc`. SETPOS reports the band
+        // it booked, which the shell may shorten to stop short of the taskbar's
+        // registered edge — position the window there and it floats above the
+        // taskbar with bare desktop showing through the difference. What the
+        // shell books and where the window belongs are separate questions; the
+        // window belongs flush against the work area.
+        Some(strip)
     }
 
     /// Hand the space back. Safe to call when nothing is registered.

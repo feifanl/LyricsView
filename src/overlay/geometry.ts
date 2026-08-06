@@ -28,8 +28,81 @@ async function pickMonitor(index: number | null): Promise<Monitor | null> {
   return (await currentMonitor()) ?? monitors[0] ?? null;
 }
 
-/** Apply a preset's size + position to the overlay window. */
-export async function restoreGeometry(preset: Preset): Promise<void> {
+interface Edges {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/** Widest work area seen per monitor — see `freeWorkArea`. */
+const freeEdges = new Map<string, Edges>();
+
+function monitorKey(m: Monitor): string {
+  return `${m.position.x},${m.position.y},${m.size.width}x${m.size.height}`;
+}
+
+/**
+ * The work area as it is when we hold no strip of our own.
+ *
+ * `mon.workArea` cannot be used directly for placement: while our strip is
+ * registered, our own band is subtracted from it. Re-reading it to place the bar
+ * therefore measured from the inner edge of the bar itself, and every re-apply —
+ * every keystroke in the Bar height field — walked the bar another height
+ * inward. Releasing and re-reserving is what appeared to "fix" it, because that
+ * gave back the space before the next read.
+ *
+ * Reading it after releasing doesn't work either: ABM_REMOVE returns at once but
+ * the work area is a cached metric the shell republishes later, so the value is
+ * still stale.
+ *
+ * So track the widest work area ever seen for this monitor. Our reservation can
+ * only ever shrink it, which makes the widest observation the one taken without
+ * our strip — no timing assumptions required. Cleared on release so a genuine
+ * change (the user resizing their taskbar) can settle to a new value.
+ */
+function freeWorkArea(mon: Monitor): Edges {
+  const wa = mon.workArea;
+  const seen: Edges = {
+    left: wa.position.x,
+    top: wa.position.y,
+    right: wa.position.x + wa.size.width,
+    bottom: wa.position.y + wa.size.height,
+  };
+  const key = monitorKey(mon);
+  const prev = freeEdges.get(key);
+  const widest: Edges = prev
+    ? {
+        left: Math.min(prev.left, seen.left),
+        top: Math.min(prev.top, seen.top),
+        right: Math.max(prev.right, seen.right),
+        bottom: Math.max(prev.bottom, seen.bottom),
+      }
+    : seen;
+  freeEdges.set(key, widest);
+  return widest;
+}
+
+/** Hand back any reserved strip, leaving the window where it is. */
+export async function releaseStrip(): Promise<void> {
+  await cmd.setReservedBar(null, { left: 0, top: 0, right: 0, bottom: 0 }, 0);
+  // Let the remembered edges settle again from scratch: with nothing of ours
+  // reserved, whatever is measured next is the truth, including a taskbar the
+  // user has since resized.
+  freeEdges.clear();
+}
+
+/**
+ * Apply a preset's size + position to the overlay window.
+ *
+ * `reserve` is what actually claims desktop space, and the caller decides when:
+ * the strip is only worth holding while a song is playing. Reserving shrinks
+ * every maximised window on the desktop, so doing it for the whole time the app
+ * happens to be running rearranges the user's screen over a bar showing nothing.
+ * With it false the bar still sits flush to the edge — it just overlaps rather
+ * than displacing.
+ */
+export async function restoreGeometry(preset: Preset, reserve = false): Promise<void> {
   const win = getCurrentWindow();
   const { w, h } = preset.size;
 
@@ -39,12 +112,18 @@ export async function restoreGeometry(preset: Preset): Promise<void> {
   if (dock !== "float") {
     const mon = await pickMonitor(preset.monitor);
     if (!mon) return;
-    const barH = Math.round(h);
+    // "Bar height" is entered in the settings window alongside the font size, so
+    // it means CSS pixels — the unit the bar's contents are laid out in. The
+    // shell and the window API want device pixels. Passing the number through
+    // unconverted made the setting mean something different on every display: on
+    // a 125% screen a bar set to 74 gave the lyric only 59 CSS pixels to sit in,
+    // so the text looked shrunken inside an over-tall strip, and the same
+    // setting looked right at 100%.
+    const barH = Math.round(h * mon.scaleFactor);
 
-    // Reserving space hands the placement to the shell: it slides the strip
-    // clear of the taskbar and any other appbar, then positions the window
-    // itself. Doing our own setSize/setPosition afterwards would fight it.
-    if (preset.reserveSpace) {
+    const edge = freeWorkArea(mon);
+
+    if (preset.reserveSpace && reserve) {
       try {
         const granted = await cmd.setReservedBar(
           dock,
@@ -56,45 +135,39 @@ export async function restoreGeometry(preset: Preset): Promise<void> {
           },
           barH,
         );
-        if (granted) {
-          const [gl, gt, gr, gb] = granted;
-          // Place the window from the granted rect here, not in the Rust call.
-          // SHAppBarMessage moves it too, but on a re-apply something lands
-          // after that and leaves the window exactly one thickness above the
-          // strip it reserved. Setting it last from this side is what makes the
-          // position stick.
-          await win.setSize(new PhysicalSize(gr - gl, gb - gt));
-          await win.setPosition(new PhysicalPosition(gl, gt));
-
-          const pos = await win.outerPosition();
-          const size = await win.outerSize();
-          // Flat string on purpose: the console collapses nested arrays to
-          // "Array(4)" and these numbers are the whole point.
-          console.info(
-            `[overlay] strip edge=${dock} asked=${barH} ` +
-              `monitor=(${mon.position.x},${mon.position.y} ${mon.size.width}x${mon.size.height}) ` +
-              `granted=(${gl},${gt} -> ${gr},${gb} = ${gr - gl}x${gb - gt}) ` +
-              `window=(${pos.x},${pos.y} ${size.width}x${size.height})`,
-          );
-          return;
+        // Flat string on purpose: the console collapses nested arrays to
+        // "Array(4)" and these numbers are the whole point.
+        console.info(
+          `[overlay] strip edge=${dock} asked=${barH} ` +
+            `monitor=(${mon.position.x},${mon.position.y} ${mon.size.width}x${mon.size.height}) ` +
+            `freeWorkArea=(${edge.top} -> ${edge.bottom}) ` +
+            `granted=${granted ? `(${granted[1]} -> ${granted[3]})` : "none"}`,
+        );
+        if (!granted) {
+          console.warn("[overlay] reserve returned no rect — falling back to overlap");
         }
-        console.warn("[overlay] reserve returned no rect — falling back to overlap");
       } catch (e) {
         console.error("[overlay] could not reserve desktop space", e);
       }
-      // Fall through and place it ourselves — an overlapping bar beats none.
+      // Placement falls through either way. Where the bar sits is our decision,
+      // not the shell's: it books the space, but the rect it books can stop
+      // short of the taskbar, and a window placed there floats above it with
+      // bare desktop showing through the gap.
     } else {
-      await cmd.setReservedBar(null, { left: 0, top: 0, right: 0, bottom: 0 }, 0);
+      await releaseStrip();
     }
 
-    await win.setSize(new PhysicalSize(mon.size.width, barH));
-    const y = dock === "top" ? mon.position.y : mon.position.y + mon.size.height - barH;
-    await win.setPosition(new PhysicalPosition(mon.position.x, y));
+    // One placement rule, reserved or not: flush inside the work area read
+    // above. Claiming and releasing the strip then moves the bar not at all —
+    // only whether other windows lay out around it.
+    await win.setSize(new PhysicalSize(edge.right - edge.left, barH));
+    const y = dock === "top" ? edge.top : edge.bottom - barH;
+    await win.setPosition(new PhysicalPosition(edge.left, y));
     return;
   }
 
   // Float mode never reserves; release anything a docked preset left behind.
-  await cmd.setReservedBar(null, { left: 0, top: 0, right: 0, bottom: 0 }, 0);
+  await releaseStrip();
   await win.setSize(new PhysicalSize(Math.round(w), Math.round(h)));
 
   const mon = await pickMonitor(preset.monitor);
