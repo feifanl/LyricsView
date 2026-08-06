@@ -285,3 +285,19 @@ export function defaultSettings(): Settings {
 export function activePreset(s: Settings): Preset {
   return s.presets[s.activePreset] ?? glassBarPreset();
 }
+
+/**
+ * What an unset `stripColor` means: the tone Windows gives its own chrome, so a
+ * docked bar reads as part of the desktop rather than a window parked over the
+ * wallpaper.
+ *
+ * Resolved at render time rather than stored in the preset, so switching the
+ * system between light and dark moves the bar with it. Lives here because both
+ * the overlay (which paints it) and the settings UI (which shows it in the
+ * picker) need the same answer — they each had their own copy, one edit apart
+ * from disagreeing about what the default looks like.
+ */
+export function systemChromeColor(): string {
+  const dark = window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true;
+  return dark ? "#202020" : "#f3f3f3";
+}

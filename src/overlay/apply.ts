@@ -1,18 +1,6 @@
 // Maps the active preset onto the overlay's CSS variables and container
 // classes. Pure DOM side-effects; called on boot and on settings change.
-import { activePreset, type Settings } from "../shared/settings";
-
-/**
- * Strip fill to use when the preset doesn't name one: the tone Windows gives its
- * own chrome, so a docked bar sits with the taskbar instead of against it.
- *
- * Resolved at render time rather than baked into the preset, so switching the
- * system between light and dark moves the bar with it.
- */
-function systemChromeColor(): string {
-  const dark = window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true;
-  return dark ? "#202020" : "#f3f3f3";
-}
+import { activePreset, systemChromeColor, type Settings } from "../shared/settings";
 
 /** `#rrggbb` plus a 0–1 alpha, as rgba(). Anything else is passed through, so a
  *  colour already carrying its own alpha still works. */

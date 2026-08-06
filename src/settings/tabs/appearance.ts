@@ -2,18 +2,11 @@
 // type, placement and highlight style, with the overlay updating in real time.
 import { cmd } from "../../shared/ipc";
 import type { AnimationStyle, BackgroundStyle, ContextCount, DockMode, Preset } from "../../shared/settings";
-import { ROMANIZATION_OFF, romanizationOn } from "../../shared/settings";
+import { ROMANIZATION_OFF, romanizationOn, systemChromeColor } from "../../shared/settings";
 import { availableFontGroups } from "../fonts";
 import { LyricPreview } from "../preview";
 import type { SettingsCtx, Tab } from "../tab";
 import { button, card, checkbox, colorInput, el, field, numberInput, range, segmented, select } from "../ui";
-
-/** Same default the overlay uses when no strip colour is set (see apply.ts), so
- *  the swatch shows what is actually on screen rather than an arbitrary value. */
-function systemChromeHex(): string {
-  const dark = window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true;
-  return dark ? "#202020" : "#f3f3f3";
-}
 
 // One live preview instance; cancel the previous loop when the tab re-renders.
 let live: LyricPreview | null = null;
@@ -234,12 +227,31 @@ function render(ctx: SettingsCtx): HTMLElement {
               textContent:
                 "Give the bar its own strip of desktop, like the taskbar. Maximised windows resize around it instead of being covered, and the bar no longer sits on top of the taskbar or your browser tabs.",
             }),
+            // "Follow the system theme" is the *absence* of a stored colour
+            // (see apply.ts), but a colour input always holds one — so touching
+            // the picker pinned the strip to a fixed shade with no way back, and
+            // the theme-following default became unreachable for good. The
+            // checkbox is that way back: it clears the value rather than writing
+            // a new one.
             field(
-              "Strip fill",
-              colorInput(working.stripColor ?? systemChromeHex(), (v) =>
-                edit((p) => (p.stripColor = v)),
+              "Match system theme",
+              checkbox(working.stripColor === undefined, (v) =>
+                void ctx.update((n) => {
+                  const p = n.presets[n.activePreset]!;
+                  if (v) delete p.stripColor;
+                  else p.stripColor = systemChromeColor(); // start from what's on screen
+                }),
               ),
+              "Follows Windows light/dark, and moves with it.",
             ),
+            ...(working.stripColor === undefined
+              ? []
+              : [
+                  field(
+                    "Strip fill",
+                    colorInput(working.stripColor, (v) => edit((p) => (p.stripColor = v))),
+                  ),
+                ]),
             field(
               "Strip opacity",
               range(working.stripOpacity ?? 1, 0, 1, 0.05, (v) =>
@@ -252,7 +264,7 @@ function render(ctx: SettingsCtx): HTMLElement {
             el("p", {
               className: "card-note",
               textContent:
-                "Fills the whole bar, behind the lyric box. At 0 the wallpaper shows through. Left untouched the colour follows your system light/dark theme.",
+                "Fills the whole bar, behind the lyric box. At 0 the wallpaper shows through.",
             }),
           ]
         : []),
