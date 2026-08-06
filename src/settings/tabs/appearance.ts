@@ -3,28 +3,53 @@
 import { cmd } from "../../shared/ipc";
 import type { AnimationStyle, BackgroundStyle, ContextCount, DockMode, Preset } from "../../shared/settings";
 import { ROMANIZATION_OFF, romanizationOn } from "../../shared/settings";
+import { availableFontGroups } from "../fonts";
 import { LyricPreview } from "../preview";
 import type { SettingsCtx, Tab } from "../tab";
 import { button, card, checkbox, colorInput, el, field, numberInput, range, segmented, select } from "../ui";
 
-const COMMON_FONTS = [
-  "Segoe UI",
-  "Arial",
-  "Calibri",
-  "Consolas",
-  "Georgia",
-  "Tahoma",
-  "Verdana",
-  "Times New Roman",
-];
-
 // One live preview instance; cancel the previous loop when the tab re-renders.
 let live: LyricPreview | null = null;
 
-function fontDatalist(): HTMLDataListElement {
-  const list = el("datalist", { id: "font-list" });
-  for (const f of COMMON_FONTS) list.append(el("option", { value: f }));
-  return list;
+/**
+ * Font picker: a grouped dropdown of the faces actually installed, each option
+ * drawn in its own typeface.
+ *
+ * This used to be a bare text box with a hidden datalist, so the only way to
+ * discover a font was to guess its name and hope autocomplete caught it — which
+ * reads as the app shipping exactly one font. A name typed by hand still works:
+ * an unrecognised current value is kept as its own option rather than silently
+ * snapping to something else.
+ */
+function fontSelect(current: string, onPick: (family: string) => void): HTMLSelectElement {
+  const sel = el("select", { className: "font-select" });
+  const groups = availableFontGroups();
+  const known = groups.some((g) => g.fonts.includes(current));
+
+  if (!known && current) {
+    const og = el("optgroup");
+    og.label = "Current";
+    const opt = el("option", { value: current, textContent: current });
+    opt.style.fontFamily = `"${current}", sans-serif`;
+    opt.selected = true;
+    og.append(opt);
+    sel.append(og);
+  }
+
+  for (const g of groups) {
+    const og = el("optgroup");
+    og.label = g.label;
+    for (const f of g.fonts) {
+      const opt = el("option", { value: f, textContent: f });
+      opt.style.fontFamily = `"${f}", sans-serif`; // show the face, not just its name
+      if (f === current) opt.selected = true;
+      og.append(opt);
+    }
+    sel.append(og);
+  }
+
+  sel.addEventListener("change", () => onPick(sel.value));
+  return sel;
 }
 
 function render(ctx: SettingsCtx): HTMLElement {
@@ -121,13 +146,12 @@ function render(ctx: SettingsCtx): HTMLElement {
     ]),
   );
 
-  const fontInput = el("input", { type: "text", value: working.font.family });
-  fontInput.setAttribute("list", "font-list");
-  fontInput.addEventListener("input", () => edit((p) => (p.font.family = fontInput.value)));
   grid.append(
     card("Type", [
-      fontDatalist(),
-      field("Font", fontInput),
+      field(
+        "Font",
+        fontSelect(working.font.family, (family) => edit((p) => (p.font.family = family))),
+      ),
       field("Size", numberInput(working.font.sizePx, (v) => edit((p) => (p.font.sizePx = v)), { min: 8, max: 160 })),
       field("Weight", numberInput(working.font.weight, (v) => edit((p) => (p.font.weight = v)), { min: 100, max: 900, step: 100 })),
       field("Line spacing", numberInput(working.lineSpacing, (v) => edit((p) => (p.lineSpacing = v)), { min: 1, max: 3, step: 0.05 })),

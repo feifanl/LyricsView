@@ -202,12 +202,23 @@ button {
   background: var(--bg);
   color: var(--text);
   font-size: 13px;
-  min-width: 150px;
+  /* Fill the rest of the row and stay on it. A <select> takes its intrinsic
+     width from its longest option, so "Microsoft JhengHei UI" pushed the font
+     row past the card and wrapped the control under its label while every
+     other row stayed on one line. `min-width: 0` lets it shrink below that
+     intrinsic width instead of forcing the wrap. */
+  flex: 1 1 150px;
+  min-width: 0;
   transition: border-color 100ms ease, box-shadow 100ms ease;
 }
 :root[data-theme="dark"] .field input,
 :root[data-theme="dark"] .field select {
   background: var(--panel-2);
+}
+/* Long family names are now allowed to shrink, so clip rather than overflow —
+   the open dropdown still shows each name in full. */
+.field select {
+  text-overflow: ellipsis;
 }
 .field input:focus-visible,
 .field select:focus-visible,

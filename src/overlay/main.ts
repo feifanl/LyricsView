@@ -213,8 +213,26 @@ function toast(text: string): void {
 }
 
 // Status (searching / no lyrics / waiting) renders inside the glass box.
-function setStatus(text: string): void {
+// `null` empties it, which drops the pill entirely rather than leaving a blank one.
+function setStatus(text: string | null): void {
   renderer.setMessage(text);
+}
+
+/** Don't announce a fetch that a cache hit is about to answer. Most track
+ *  changes resolve in well under this, and showing "searching" for 80 ms just
+ *  pops an empty-looking pill on screen between every song. */
+const STATUS_DELAY_MS = 700;
+let statusDelayTimer = 0;
+
+function scheduleStatus(text: string, seq: number): void {
+  window.clearTimeout(statusDelayTimer);
+  statusDelayTimer = window.setTimeout(() => {
+    if (seq === loadSeq && !hasDoc) setStatus(text);
+  }, STATUS_DELAY_MS);
+}
+
+function cancelScheduledStatus(): void {
+  window.clearTimeout(statusDelayTimer);
 }
 
 async function loadTrackMeta(): Promise<void> {
@@ -238,10 +256,16 @@ async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
   await loadTrackMeta();
   if (seq !== loadSeq) return;
   exitEmptyState(); // a fresh search supersedes any prior empty-state
-  setStatus(force ? "reloading…" : "searching lyrics…");
+  // Clear first: the previous song's line must not sit under a new track. A
+  // reload is user-initiated, so that one says so immediately; an ordinary track
+  // change stays blank until the fetch is slow enough to be worth mentioning.
+  setStatus(null);
+  if (force) setStatus("reloading…");
+  else scheduleStatus("searching lyrics…", seq);
   try {
     const doc = await cmd.fetchLyrics(t, force);
     if (seq !== loadSeq) return; // a newer track superseded this fetch
+    cancelScheduledStatus();
     if (doc && doc.lines.length > 0) {
       gateTranslations(doc); // drop translations that don't match the target language
       currentDoc = doc;
@@ -259,6 +283,7 @@ async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
     }
   } catch (e) {
     if (seq !== loadSeq) return;
+    cancelScheduledStatus();
     console.error("[overlay] fetch_lyrics failed", e);
     enterEmptyState("lyrics error");
   }
@@ -542,6 +567,7 @@ async function boot(): Promise<void> {
     exitEmptyState(); // new song: clear any lingering empty-state fade
     setFaded(false); // a new track means we're active
     clock.reset(); // don't carry the previous song's position/anchor
+    cancelScheduledStatus(); // a pending note from the last song is stale now
     syncMarks = []; // marks describe one song's timeline, never the next one's
     if (import.meta.env.DEV) diag.reset();
     lastTimelinePos = -1;
@@ -604,7 +630,10 @@ async function boot(): Promise<void> {
   // so without this pull the overlay would sit on "waiting" until the next song.
   // The watcher thread may still be initializing at boot, so retry briefly; if
   // onTrackChanged fires first, currentTrack guards against a double load.
-  setStatus("waiting for a player…");
+  // Fades on the empty-state timer like every other note. It used to sit there
+  // forever, which is the worst case: a pill parked on screen precisely when
+  // there is nothing to show.
+  enterEmptyState("waiting for a player…");
   void seedCurrentTrack();
   requestAnimationFrame(frame);
 }
