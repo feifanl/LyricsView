@@ -37,6 +37,21 @@ export function initEditMode(): void {
 
   doneBtn.addEventListener("click", () => void cmd.setEditMode(false));
 
+  // Persist as the window actually moves, not only when edit mode is dismissed.
+  // Saving on exit alone meant a drag survived exactly one way out: switching
+  // preset from the settings window, or quitting while still in edit mode, threw
+  // the new position away and the overlay went back to where it had been. The
+  // timer coalesces the flood of events a single drag produces into one write.
+  const PERSIST_DEBOUNCE_MS = 400;
+  let persistTimer = 0;
+  function schedulePersist(): void {
+    if (!editing) return; // ignore programmatic moves (dock, preset restore)
+    window.clearTimeout(persistTimer);
+    persistTimer = window.setTimeout(() => void persistGeometry(), PERSIST_DEBOUNCE_MS);
+  }
+  void win.onMoved(schedulePersist);
+  void win.onResized(schedulePersist);
+
   async function setEdit(on: boolean): Promise<void> {
     editing = on;
     chrome.hidden = !on;
@@ -44,7 +59,13 @@ export function initEditMode(): void {
     // Hands the preset width back before the user drags, so the size they see
     // (and the one persisted below) isn't an auto-widened one.
     await pauseAutoWidth(on);
-    if (!on) await persistGeometry();
+    if (!on) {
+      // Drop any pending debounce: it would land after `editing` went false and
+      // write the same geometry a second time, or worse, after a preset switch
+      // had already moved the window.
+      window.clearTimeout(persistTimer);
+      await persistGeometry();
+    }
   }
 
   async function persistGeometry(): Promise<void> {

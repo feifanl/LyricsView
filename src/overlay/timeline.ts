@@ -20,7 +20,9 @@
 export interface LineSpan {
   start: number;
   end: number;
-  /** Character count of the line's text; 0 means "unknown, assume long". */
+  /** Character count of the line's trimmed text. 0 means the line is blank —
+   *  providers emit one to mark an instrumental, and there is nothing to sing or
+   *  to show. */
   chars: number;
 }
 
@@ -42,7 +44,6 @@ const LINGER_MS = 6_000;
 
 /** How long the line's own text could plausibly occupy. */
 function plausibleSungMs(chars: number): number {
-  if (chars <= 0) return Number.POSITIVE_INFINITY; // unknown: never cut
   return Math.max(MIN_HOLD_MS, chars * MS_PER_CHAR * SLACK);
 }
 
@@ -60,6 +61,50 @@ function visibleUntil(line: LineSpan): number {
  * Index of the line to display at `pos`, or -1 for "show nothing" — before the
  * first line (long intro), during an instrumental break, and after the outro.
  */
+/**
+ * Silence between two lines that makes them musically unrelated, so the second
+ * is not "the next line" in any sense the listener would recognise.
+ *
+ * Word-level sources leave a beat or two between ordinary lines, so this has to
+ * sit well clear of routine phrasing; an instrumental, a verse break or a key
+ * change runs far longer.
+ */
+const CONTEXT_GAP_MS = 6_000;
+
+/**
+ * The span of lines to show around `idx` for a preset that displays context.
+ *
+ * Neighbours are adjacent in the array, which says nothing about whether they
+ * are adjacent in the song. Across an instrumental the "next" line can be half a
+ * minute away, and index-only context put it on screen the moment the break
+ * began — the lyric appeared long before it was sung, and the line from before
+ * the break hung around long after. Walk outward from the current line and stop
+ * at the first real silence.
+ *
+ * A blank line stops the walk too: it renders as an empty row, and providers use
+ * one to mark exactly the section breaks this is trying not to cross.
+ */
+export function contextRange(
+  lines: readonly LineSpan[],
+  idx: number,
+  before: number,
+  after: number,
+): { start: number; end: number } {
+  let start = idx;
+  let end = idx;
+  for (let n = 0; n < before && start > 0; n++) {
+    const prev = lines[start - 1]!;
+    if (lines[start]!.start - prev.end > CONTEXT_GAP_MS || prev.chars === 0) break;
+    start--;
+  }
+  for (let n = 0; n < after && end < lines.length - 1; n++) {
+    const next = lines[end + 1]!;
+    if (next.start - lines[end]!.end > CONTEXT_GAP_MS || next.chars === 0) break;
+    end++;
+  }
+  return { start, end };
+}
+
 export function lineIndexAt(lines: readonly LineSpan[], pos: number): number {
   if (lines.length === 0 || pos < lines[0]!.start) return -1;
 
@@ -75,5 +120,11 @@ export function lineIndexAt(lines: readonly LineSpan[], pos: number): number {
       hi = mid - 1;
     }
   }
+  // A blank line is an instrumental marker, not a lyric. Providers give it a
+  // span covering the whole break — half a minute is common — so selecting it
+  // pins the box open on nothing: an empty row where the lyric goes, and, for a
+  // preset that shows context, the lines either side of the break displayed
+  // together as though they were being sung.
+  if (lines[found]!.chars === 0) return -1;
   return pos >= visibleUntil(lines[found]!) ? -1 : found;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lineIndexAt } from "./timeline";
+import { contextRange, lineIndexAt, type LineSpan } from "./timeline";
 
 /** Lines the way the parser emits them: each ends where the next begins. */
 function chain(entries: [start: number, text: string][], trailingMs = 4000) {
@@ -88,12 +88,71 @@ describe("lineIndexAt", () => {
     expect(lineIndexAt(lines, 26_000)).toBe(-1);
   });
 
-  it("never cuts a line whose text is unknown", () => {
-    const unknown = [{ start: 0, end: 600_000, chars: 0 }];
-    expect(lineIndexAt(unknown, 500_000)).toBe(0);
+  it("shows nothing while a blank line holds the timeline", () => {
+    // Providers mark an instrumental with an empty line spanning the whole
+    // break. This used to read as "length unknown, so never cut it", which held
+    // the box open on an empty row for the full half-minute — and on a preset
+    // with context, displayed the lines either side of the break together as
+    // though they were being sung. Nothing is sung here, so show nothing.
+    const withBreak = [
+      { start: 0, end: 4_000, chars: 12 },
+      { start: 97_500, end: 132_500, chars: 0 },
+      { start: 132_500, end: 140_400, chars: 16 },
+    ];
+    expect(lineIndexAt(withBreak, 110_000)).toBe(-1);
+    expect(lineIndexAt(withBreak, 132_000)).toBe(-1);
+    expect(lineIndexAt(withBreak, 134_000)).toBe(2);
   });
 
   it("handles an empty document", () => {
     expect(lineIndexAt([], 5_000)).toBe(-1);
+  });
+});
+
+describe("contextRange", () => {
+  const span = (start: number, end: number, chars = 12): LineSpan => ({ start, end, chars });
+
+  it("takes the neighbours either side when the lines run on", () => {
+    const lines = [span(0, 3000), span(3200, 6000), span(6200, 9000)];
+    expect(contextRange(lines, 1, 1, 1)).toEqual({ start: 0, end: 2 });
+  });
+
+  it("stops before an instrumental instead of showing the line after it", () => {
+    // The Karaoke-preset bug: line 2 doesn't start for another 21s, but it sits
+    // next to line 1 in the array, so index-only context put it on screen the
+    // moment the break began.
+    const lines = [span(86400, 91100), span(91800, 95800), span(116700, 122500)];
+    expect(contextRange(lines, 1, 1, 1)).toEqual({ start: 0, end: 1 });
+  });
+
+  it("stops after an instrumental instead of holding the line before it", () => {
+    const lines = [span(86400, 91100), span(91800, 95800), span(116700, 122500), span(122500, 126100)];
+    expect(contextRange(lines, 2, 1, 1)).toEqual({ start: 2, end: 3 });
+  });
+
+  it("tolerates the ordinary gap word-level timings leave between lines", () => {
+    const lines = [span(0, 3000), span(4500, 7000), span(8800, 11000)];
+    expect(contextRange(lines, 1, 1, 1)).toEqual({ start: 0, end: 2 });
+  });
+
+  it("stops at a blank separator line", () => {
+    const lines = [span(0, 3000), span(3100, 3200, 0), span(3300, 6000)];
+    expect(contextRange(lines, 2, 1, 1)).toEqual({ start: 2, end: 2 });
+  });
+
+  it("clamps at the ends of the document", () => {
+    const lines = [span(0, 3000), span(3200, 6000)];
+    expect(contextRange(lines, 0, 1, 1)).toEqual({ start: 0, end: 1 });
+    expect(contextRange(lines, 1, 1, 1)).toEqual({ start: 0, end: 1 });
+  });
+
+  it("returns just the line itself when the preset shows no context", () => {
+    const lines = [span(0, 3000), span(3200, 6000), span(6200, 9000)];
+    expect(contextRange(lines, 1, 0, 0)).toEqual({ start: 1, end: 1 });
+  });
+
+  it("walks more than one line out when asked", () => {
+    const lines = [span(0, 3000), span(3200, 6000), span(6200, 9000), span(9200, 12000), span(12200, 15000)];
+    expect(contextRange(lines, 2, 2, 2)).toEqual({ start: 0, end: 4 });
   });
 });

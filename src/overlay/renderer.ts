@@ -7,7 +7,7 @@ import type { LyricsDoc, LyricLine, LyricWord } from "../shared/types";
 import { synthesizeWords } from "./interpolate";
 import { furiganaFragment } from "./furigana";
 import { annotate, expectsRomaji, romanizationActive } from "./romanize";
-import { lineIndexAt, type LineSpan } from "./timeline";
+import { contextRange, lineIndexAt, type LineSpan } from "./timeline";
 
 interface PreparedLine {
   line: LyricLine;
@@ -443,8 +443,14 @@ export class Renderer {
     const wrapper = document.createElement("div");
     wrapper.className = "stack";
 
-    const start = Math.max(0, idx - this.layout.before);
-    const end = Math.min(this.prepared.length - 1, idx + this.layout.after);
+    // Clamped by silence, not just by array bounds: a neighbour on the far side
+    // of an instrumental is not context, it's a spoiler (see contextRange).
+    const { start, end } = contextRange(
+      this.lineSpans,
+      idx,
+      this.layout.before,
+      this.layout.after,
+    );
     for (let i = start; i <= end; i++) {
       const p = this.prepared[i]!;
       if (i !== idx) {
