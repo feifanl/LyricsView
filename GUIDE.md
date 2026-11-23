@@ -104,10 +104,12 @@ Windows slides the strip clear of the taskbar for you, so the bar never sits on 
 it.
 
 > [!NOTE]
-> **The strip is only held while music is playing.** Claiming it resizes every maximised
-> window on your desktop, which isn't worth doing for a bar showing nothing. Pause for
-> about twenty seconds and your windows reclaim the space; press play and they give it
-> back. The bar itself doesn't move either way — only whether windows lay out around it.
+> **The strip is only held while a song with lyrics is playing.** Claiming it resizes every
+> maximised window on your desktop, which isn't worth doing for a bar showing nothing.
+> Pause for about twenty seconds and your windows reclaim the space; press play and they
+> give it back. A track with no lyrics gives the space back as soon as its
+> **♪ no lyrics found** note fades. The bar itself doesn't move either way — only whether
+> windows lay out around it.
 
 ### Strip fill
 
