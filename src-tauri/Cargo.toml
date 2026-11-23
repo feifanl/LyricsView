@@ -1,6 +1,6 @@
 [package]
 name = "lyricsview"
-version = "0.1.0"
+version = "0.1.1"
 description = "Floating karaoke lyrics overlay for Windows"
 authors = ["Feifan Liu"]
 license = "MIT"
