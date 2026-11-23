@@ -93,7 +93,12 @@ function startEmptyHide(): void {
   setFaded(false); // show the note first
   window.clearTimeout(emptyHideTimer);
   emptyHideTimer = window.setTimeout(() => {
-    if (emptyState) setFaded(true);
+    if (!emptyState) return;
+    setFaded(true);
+    // The bar is now invisible, so the strip it sits in is bare desktop: hand it
+    // back. Done here rather than on entering the empty state so the note gets
+    // its few seconds on screen without the windows below jumping first.
+    syncStripReservation(clock.isPlaying());
   }, EMPTY_STATE_HIDE_MS);
 }
 
@@ -136,10 +141,11 @@ function stripWanted(): boolean {
 }
 
 /**
- * Claim or release the desktop strip. Held only while a song is actually
- * playing: the reservation displaces every maximised window on the desktop, and
- * paying that cost for a bar showing nothing — for however long the app happens
- * to be open — is not a trade the user asked for.
+ * Claim or release the desktop strip. Held only while a song with lyrics is
+ * actually playing: the reservation displaces every maximised window on the
+ * desktop, and paying that cost for a bar showing nothing — for however long the
+ * app happens to be open, or for a track no provider has lyrics for — is not a
+ * trade the user asked for.
  */
 async function setStripReserved(on: boolean): Promise<void> {
   if (!currentSettings || stripReserved === on) return;
@@ -153,15 +159,30 @@ async function setStripReserved(on: boolean): Promise<void> {
   }
 }
 
-/** Follow playback: reserve on play, release after a pause outlives the grace. */
+/**
+ * Follow playback and lyrics: reserve while lyrics are playing, release once the
+ * bar has nothing to show (no lyrics, unsynced only, an error) or a pause
+ * outlives the grace.
+ *
+ * Playback alone used to decide this, so a track without lyrics faded the bar
+ * out but kept its strip — a band of bare wallpaper across the top of the screen
+ * for the whole song.
+ */
 function syncStripReservation(playing: boolean): void {
   window.clearTimeout(reserveTimer);
-  if (!stripWanted()) {
+  if (!stripWanted() || emptyState) {
     void setStripReserved(false);
     return;
   }
-  if (playing) void setStripReserved(true);
-  else reserveTimer = window.setTimeout(() => void setStripReserved(false), RESERVE_RELEASE_MS);
+  if (!playing) {
+    reserveTimer = window.setTimeout(() => void setStripReserved(false), RESERVE_RELEASE_MS);
+    return;
+  }
+  // Claim space only once lyrics are in. While a fetch is still in flight leave
+  // the strip as it stands: back-to-back songs with lyrics keep it held through
+  // the search, and one after a lyric-less track doesn't book space it may give
+  // straight back.
+  if (hasDoc) void setStripReserved(true);
 }
 
 function onPlayingChanged(playing: boolean): void {
@@ -323,6 +344,8 @@ async function loadLyrics(t: TrackInfo, force: boolean): Promise<void> {
       currentDoc = doc;
       renderer.setDoc(doc); // replaces the status message
       hasDoc = true;
+      // Lyrics to show: claim the strip if the last track gave it back.
+      syncStripReservation(clock.isPlaying());
       void maybeTranslate(doc);
     } else if (doc && doc.plain) {
       // Unsynced lyrics only: nothing to follow, so treat the note as empty-state.

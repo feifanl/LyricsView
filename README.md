@@ -74,7 +74,7 @@ Global -- they work even when the setting page is out of focus. Click a binding 
 |:--|:--|
 | **Word-by-word fill** | Driven by an interpolated, drift-corrected playback clock. Line-only lyrics still get smooth per-word fill by interpolation. |
 | **Provider fallback** | LRCLIB (line-level) → Musixmatch richsync → NetEase yrc → Apple Music syllable TTML. |
-| **Reserves desktop space** | A docked bar can claim its own strip like the taskbar, so maximised windows lay out around it instead of being covered — held only while something is playing. |
+| **Reserves desktop space** | A docked bar can claim its own strip like the taskbar, so maximised windows lay out around it instead of being covered — held only while a song with lyrics is playing. |
 | **Two-tap drift fix** | Lyrics timed to a different release drift linearly. Tap twice, a minute apart, and the correction is solved and saved per track. |
 | **Offline romanization** | Japanese romaji + furigana, Chinese pinyin, Korean romaja, Russian transliteration. |
 | **Translation** | Bundled provider translations first; optionally your own DeepL / Google / OpenAI-compatible key, batched once per track. |
